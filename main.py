@@ -46,46 +46,31 @@ class MultiAgentPipelineState(TypedDict):
 def agno_python_tool_interface(instruction: str, agent_context_hint: Optional[str] = None) -> str:
     """
     This function is the integration point for your actual agno_python_tool.
-    It takes a natural language instruction from the LLM.
-    Your tool internally generates and executes Python code based on this instruction.
-    It MUST return a string observation that includes:
-    - Confirmation of the action taken.
-    - Any direct results (e.g., "Shape of data is (100,10).").
-    - CRUCIALLY: Clear references (e.g., filenames like 'cleaned_train_data_v1.pkl' or 
-      'price_distribution_plot.png', or unique IDs) for ANY data artifact, plot, or model object 
-      that was created or saved as a result of the instruction, IF THE LLM'S INSTRUCTION
-      ASKED FOR THE ARTIFACT TO BE SAVED AND ITS REFERENCE REPORTED.
-    The LLM agent relies on these reported references.
     """
     print(f"    [AGNO_PYTHON_TOOL INTERFACE] Sending Instruction to your tool:\n    '{instruction}'")
     if agent_context_hint:
         print(f"    Agent Context Hint (passed to your tool): {agent_context_hint}")
     
-    # --- YOUR ACTUAL TOOL'S LOGIC AND CALL GOES HERE ---
-    # This simulation provides generic responses. Your tool's responses need to be
-    # genuinely informative based on the instruction.
-    
     sim_observation = f"Observation: PythonTool processed instruction: '{instruction}'. "
     instruction_lower = instruction.lower()
 
-    # Generic responses - LLM needs to be specific in its requests for references
     if "load the dataset from" in instruction_lower and "report its reference" in instruction_lower:
         if "train_data.csv" in instruction:
-            sim_observation += "Dataset 'dummy_pipeline_data/train_data.csv' loaded. Tool reports its reference as 'train_df_loaded_ref.pkl'."
+            sim_observation += "Dataset 'dummy_pipeline_data/train_data.csv' loaded. Tool reports its reference as 'train_df_ref_01'."
         elif "val_data.csv" in instruction:
-            sim_observation += "Dataset 'dummy_pipeline_data/val_data.csv' loaded. Tool reports its reference as 'val_df_loaded_ref.pkl'."
+            sim_observation += "Dataset 'dummy_pipeline_data/val_data.csv' loaded. Tool reports its reference as 'val_df_ref_01'."
         elif "test_data.csv" in instruction:
-            sim_observation += "Dataset 'dummy_pipeline_data/test_data.csv' loaded. Tool reports its reference as 'test_df_loaded_ref.pkl'."
-        else:
-            sim_observation += "Dataset loaded. Tool assigned reference '<generic_loaded_data_ref.pkl>'."
-    elif "clean data referenced by" in instruction_lower and "report the new reference" in instruction_lower:
-        match = re.search(r"clean data referenced by '([^']+)'", instruction_lower)
-        old_ref = match.group(1) if match else "unknown_ref"
-        sim_observation += f"Data '{old_ref}' cleaned. New reference reported by tool: 'cleaned_{old_ref.replace('.pkl','_v2.pkl')}'."
-    elif "generate a histogram for" in instruction_lower and "save it, report the filename, and provide a textual description" in instruction_lower:
-        match = re.search(r"histogram for the '([^']+)' column", instruction_lower)
-        col_name = match.group(1) if match else "unknown_col"
-        sim_observation += f"Histogram for '{col_name}' generated. Plot saved by tool as '{col_name}_histogram.png'. Description: The '{col_name}' distribution is [simulated_description, e.g., moderately skewed right]."
+            sim_observation += "Dataset 'dummy_pipeline_data/test_data.csv' loaded. Tool reports its reference as 'test_df_ref_01'."
+    elif "identify date columns in 'train_df_ref_01' and parse them to datetime objects. report the names of parsed date columns." in instruction_lower:
+        sim_observation += "Identified 'Date' column in 'train_df_ref_01' and parsed it to datetime64[ns]. Parsed date columns: ['Date']."
+    elif "for data referenced by 'train_df_ref_01', create a new version excluding the 'date' column (or other non-numeric columns except target for correlation). report the new reference for this numeric-only data." in instruction_lower:
+        sim_observation += "Created a numeric-only version of 'train_df_ref_01' by excluding specified non-numeric columns. New reference is 'train_df_ref_01_numeric_for_corr.pkl'."
+    elif "generate a correlation heatmap for the data referenced by 'train_df_ref_01_numeric_for_corr.pkl'" in instruction_lower:
+        sim_observation += "Correlation heatmap 'correlation_matrix_eda.png' saved for 'train_df_ref_01_numeric_for_corr.pkl'. Description: Strong positive correlation (0.85) between 'Price' and 'FeatureA'."
+    elif "clean data referenced by 'train_df_ref_01' and report the new reference" in instruction_lower: # General cleaning
+        sim_observation += "Data 'train_df_ref_01' cleaned (generic cleaning). New reference reported by tool: 'cleaned_train_df_v2.pkl'."
+    elif "generate a histogram for the 'price' column from 'cleaned_train_df_v2.pkl', save it, report the filename, and provide a textual description" in instruction_lower:
+        sim_observation += "Histogram for 'Price' generated from 'cleaned_train_df_v2.pkl'. Plot saved by tool as 'price_histogram_final.png'. Description: The 'Price' distribution is unimodal and appears moderately right-skewed, with a peak around 110."
     elif "create a scikit-learn pipeline" in instruction_lower and "save this untrained pipeline and report its reference" in instruction_lower:
         sim_observation += "Untrained Scikit-learn pipeline created as instructed. Saved by tool. Reference is 'untrained_ml_pipeline_ref.pkl'."
     elif "train the pipeline" in instruction_lower and "save the trained pipeline and report its reference" in instruction_lower:
@@ -93,12 +78,11 @@ def agno_python_tool_interface(instruction: str, agent_context_hint: Optional[st
     elif "separate target" in instruction_lower and "report new references for x_train, y_train" in instruction_lower:
         sim_observation += "Target separated. New references reported by tool: X_train='X_train_final_ref.pkl', y_train='y_train_final_ref.pkl', X_val='X_val_final_ref.pkl', y_val='y_val_final_ref.pkl', X_test='X_test_final_ref.pkl'."
     elif "calculate classification metrics" in instruction_lower:
-        sim_observation += "Metrics calculated by tool and reported as: {{'accuracy': 0.90, 'f1_score': 0.88, 'roc_auc': 0.94}}." # Tool reports JSON-like metrics string
+        sim_observation += "Metrics calculated by tool and reported as: {{'accuracy': 0.90, 'f1_score': 0.88, 'roc_auc': 0.94}}."
     elif "calculate regression metrics" in instruction_lower:
         sim_observation += "Metrics calculated by tool and reported as: {{'mse': 12.3, 'r_squared': 0.81}}."
     else:
         sim_observation += "Task completed. If specific artifacts were requested to be saved and their references reported, those details are included above."
-    # --- END OF SIMULATION / YOUR TOOL INTEGRATION ---
             
     print(f"    [AGNO_PYTHON_TOOL INTERFACE] Returning Observation:\n    '{sim_observation}'")
     return sim_observation
@@ -170,58 +154,46 @@ def parse_llm_json_final_answer(final_answer_json_string: str, default_error_mes
 # --- 5. Define Agent Nodes ---
 
 def eda_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
-    print("\n--- EDA Agent Node Running ---")
+    print("\n--- EDA Agent Node Running (Date Handling Emphasis) ---")
     data_paths = state["data_paths"]
     target_col = state.get("target_column_name", "Target")
     eda_tool_context_hint = f"Initial data paths: {json.dumps(data_paths)}. Target column: '{target_col}'. Task: EDA."
 
     prompt_content = f"""You are an Expert EDA Data Scientist performing iterative research.
     The PythonTool you use accepts natural language instructions. It will report back references to any data it loads/creates (e.g., 'train_df_ref_01') and plots it saves (e.g., 'plot.png').
-    When you instruct the PythonTool to generate a plot, ALSO instruct it to provide a textual description of the plot's key features (shape, trend, skewness, outliers, correlation strength) in its observation, along with the plot's reference/filename. Use these textual descriptions in your reasoning and summary.
+    When you instruct the PythonTool to generate a plot, ALSO instruct it to provide a textual description of the plot's key features.
     You MUST instruct the tool to report references for all created/modified data and plots.
 
     Initial context for PythonTool: {eda_tool_context_hint}
 
-    Your EDA Process:
-    1.  Load all datasets (train, val, test). Instruct PythonTool to report the references it assigns to these loaded dataframes.
-    2.  Using these reported references, investigate structure (shapes, columns, data types), and examine head/tail.
-    3.  Identify date/timestamp columns. Instruct PythonTool to parse them to datetime objects and report if successful.
-    4.  Check for missing values and outliers in each dataset reference. For visualizations (e.g., boxplot for outliers), instruct PythonTool to save the plot, report its filename, AND provide a description of what the plot shows.
-    5.  Analyze distributions (especially for '{target_col}') and correlations. For any plots generated (histograms, scatter plots, heatmaps), instruct PythonTool to save the plot, report its filename, AND provide a textual description of its key features.
-    6.  Perform initial data cleaning (e.g., handling obvious errors, simple imputations if appropriate for initial analysis, or type conversions). Instruct PythonTool to save cleaned datasets and report their NEW references.
-    7.  Continuously analyze observations. If an observation reveals something unexpected or interesting (e.g., high percentage of missing values, strange distribution, strong unexpected correlation), instruct PythonTool to investigate it further. This is your research phase.
-    8.  Conclude when you have a thorough understanding and have gathered sufficient insights.
+    Your EDA Process (Strict Order for Date Handling):
+    1.  **Load Datasets:** Instruct PythonTool to load all datasets (train, val, test) using paths from context. Ask it to report the references it assigns to these loaded dataframes (e.g., 'initial_train_df_ref').
+    2.  **Identify and Parse Date Columns:** Using the reported references (e.g., 'initial_train_df_ref'), instruct PythonTool to identify any date/timestamp columns and parse them into proper datetime objects. Ask it to confirm which columns were parsed.
+    3.  **Basic Structure & Quality (Initial):** Using these initial references, check overall structure (shapes, columns, dtypes), and examine head/tail. Perform an initial check for missing values and outliers.
+    4.  **Prepare Data for Numeric Analysis (IMPORTANT for correlations, etc.):**
+        * Instruct PythonTool: "For data referenced by 'initial_train_df_ref' (and similarly for val/test if needed for comparison plots later), create a new version suitable for numeric analysis like correlation heatmaps. This means ensuring only numeric columns (and the target, if numeric) are present. If date columns were parsed (e.g., 'Date'), they should NOT be in this numeric version unless relevant numeric features (like year, month, day_of_week_numeric) have been extracted from them AND the original datetime object column itself is EXCLUDED or DROPPED. Report the NEW reference for this numeric-ready dataset (e.g., 'train_df_numeric_ref')."
+    5.  **Numerical EDA (Correlations, etc.):** Using the NEW numeric-ready references (e.g., 'train_df_numeric_ref'), instruct PythonTool to compute and describe correlations (ask for plot ref & description).
+    6.  **Distribution Analysis:** Using the initial or cleaned data references (e.g., 'initial_train_df_ref' or a cleaned version if you created one), analyze distributions of key features, especially '{target_col}'. Ask for plot refs & descriptions.
+    7.  **Further Data Quality & Cleaning:** Based on initial findings, perform more detailed data quality checks. If cleaning is done (imputation, outlier handling), instruct PythonTool to save the cleaned datasets and report their FINAL references (e.g., 'cleaned_train_final_eda.pkl').
+    8.  **Iterative Research:** Continue analyzing observations. If something unexpected is found, instruct PythonTool to investigate.
+    9.  **Conclude:** When EDA is thorough.
 
-    ReAct Format:
-    Thought: (Optional) Your reasoning.
-    Action: Python
-    Action Input: <Natural language instruction for PythonTool, e.g., "Load the dataset from '{data_paths.get('train')}' and instruct the tool to report the reference it will use for this loaded training data.">
-    (System will provide Observation:)
-    Observation: <result from PythonTool, e.g., "Dataset '{data_paths.get('train')}' loaded. Tool reports its reference as 'train_df_ref_01'.">
-
+    ReAct Format: Action: Python, Action Input: <NL instruction>.
     "Final Answer:" MUST be a single well-formed JSON object string, enclosed in ```json ... ```.
-    The JSON object MUST have these top-level keys:
-    "eda_summary": (string) Comprehensive summary, INTEGRATING plot descriptions and insights from your research.
-    "data_quality_report": {{ 
-        "missing_values": [ (list of strings, e.g., "'F3' in 'train_df_ref_01' has 10% missing values. Tool generated 'missing_values_plot.png'.") ], 
-        "outliers": [ (list of strings, e.g., "'Price' in 'train_df_ref_01' shows outliers. Description from tool: 'Several points above 3*IQR'. Plot: 'price_outliers.png'.") ],
-        "date_columns_analysis": [ (list of strings, e.g., "'OrderDate' in 'train_df_ref_01' parsed to datetime. Covers range YYYY-MM-DD to YYYY-MM-DD.") ]
+    The JSON object MUST have keys:
+    "eda_summary": (string) Comprehensive summary.
+    "data_quality_report": {{ "missing_values": [...], "outliers": [...], "date_columns_analysis": [...] }}
+    "key_insights": [ (list of strings) ]
+    "fe_suggestions": [ (list of strings, e.g., "FE Suggestion: For parsed date column 'Date' in 'cleaned_train_final_eda.pkl', extract Year, Month, DayOfWeek as features, then DROP the original 'Date' column before modeling.") ]
+    "artifact_references": {{ 
+        "processed_train_data": "<tool_reported_FINAL_train_ref_after_eda>",
+        "processed_val_data": "<tool_reported_FINAL_val_ref_after_eda>",
+        "processed_test_data": "<tool_reported_FINAL_test_ref_after_eda>",
+        "plots": {{ "target_distribution": "<plot_ref>", "correlation_matrix": "<plot_ref>" }}
     }}
-    "key_insights": [ (list of strings, e.g., "Insight: 'Price' distribution (see 'price_dist.png') is right-skewed, suggesting a log transform for modeling.") ]
-    "fe_suggestions": [ (list of strings, e.g., "FE Suggestion: Log transform 'Price' from 'cleaned_train_data_ref'. Apply consistently.") ]
-    "artifact_references": {{ // ALL references reported by the tool for artifacts created/used during EDA
-        "processed_train_data": "<tool_reported_final_train_ref_after_eda>",
-        "processed_val_data": "<tool_reported_final_val_ref_after_eda>",
-        "processed_test_data": "<tool_reported_final_test_ref_after_eda>",
-        "plots": {{  // Dictionary of plot descriptions/names to their filenames
-            "target_distribution": "<tool_reported_plot_filename_for_target_dist>",
-            "correlation_matrix": "<tool_reported_plot_filename_for_corr_matrix>"
-            // Add other plot references as "descriptive_plot_name": "filename.png"
-        }}
-    }}
-    Begin your EDA research.
+    Begin.
     """
-    final_answer_json_string = run_generic_react_loop(prompt_content, state.get("max_react_iterations", 12), eda_tool_context_hint) 
+    final_answer_json_string = run_generic_react_loop(prompt_content, state.get("max_react_iterations", 15), eda_tool_context_hint) # Increased iterations for more steps
     
     parsed_data = parse_llm_json_final_answer(final_answer_json_string, "EDA report generation failed.")
     
@@ -256,41 +228,38 @@ def feature_engineering_agent_node(state: MultiAgentPipelineState) -> Dict[str, 
     val_ref_from_eda = eda_report.get("artifact_references", {}).get("processed_val_data", "val_eda.pkl")
     test_ref_from_eda = eda_report.get("artifact_references", {}).get("processed_test_data", "test_eda.pkl")
     suggestions_from_eda = eda_report.get("fe_suggestions", [])
-    issues_from_eda = eda_report.get("data_quality", {}) 
-    
+    # Extract specific date handling suggestions if EDA provided them structured
+    date_handling_suggestions = [s for s in suggestions_from_eda if "date column" in s.lower() and "extract" in s.lower() and "drop" in s.lower()]
+
     target_col = state.get("target_column_name", "Target")
 
     fe_tool_context_hint = (f"Input data refs from EDA: train='{train_ref_from_eda}', val='{val_ref_from_eda}', test='{test_ref_from_eda}'. "
-                            f"Target: '{target_col}'. EDA FE Suggestions: {json.dumps(suggestions_from_eda)}. EDA Issues: {json.dumps(issues_from_eda)}")
+                            f"Target: '{target_col}'. EDA FE Suggestions: {json.dumps(suggestions_from_eda)}.")
 
     prompt_content = f"""You are a Feature Engineering Specialist. PythonTool takes NL instructions.
-    Context from EDA (Full EDA Report available if needed, key parts below):
+    Context from EDA:
     - Input Train Data Ref for PythonTool: {train_ref_from_eda}
     - Input Val Data Ref for PythonTool: {val_ref_from_eda}
     - Input Test Data Ref for PythonTool: {test_ref_from_eda}
     - EDA FE Suggestions to implement: {json.dumps(suggestions_from_eda) if suggestions_from_eda else 'Perform standard best-practice FE.'}
-    - EDA Data Quality Issues to consider: {json.dumps(issues_from_eda) if issues_from_eda else 'None specific'}
     - Target Column: '{target_col}'
 
     Your tasks:
     1. Instruct PythonTool to use/load datasets using EDA references.
-    2. Based on EDA suggestions and issues, instruct tool to:
-        a. Fit transformers (scalers, encoders, imputers) on training data. Ask tool to SAVE each and report its reference (e.g., 'fitted_scaler.pkl').
-        b. Create a Scikit-learn `Pipeline` object including these transformers AND an UNTRAINED model estimator. Ask tool to SAVE this untrained pipeline and report its reference.
-    3. Separate features (X) and target ('{target_col}') from the (potentially transformed by individual steps if not using full pipeline for this part) train/val data. Create X_test. Ask tool to report references for X_train, y_train, etc., and the final feature list.
+    2. **PRIORITY: Implement date feature engineering as suggested by EDA. This typically involves instructing the tool to extract components (Year, Month, Day, DayOfWeek etc.) from any parsed date columns and THEN CRUCIALLY instructing the tool to DROP the original datetime object column from all datasets (train, val, test). Ensure this is done consistently and new data references are reported by the tool.**
+    3. Implement other FE steps based on EDA suggestions (transformations, imputation, etc.). Apply consistently.
+    4. Create/Save transformers (scalers, encoders) and an UNTRAINED Scikit-learn `Pipeline` object. Ask tool to report references.
+    5. Separate features (X) and target ('{target_col}') from transformed data. Ask tool to report references for X_train, y_train, etc., and the final feature list (which should NOT contain raw date columns).
 
     ReAct Format: Action: Python, Action Input: <NL instruction>.
     "Final Answer:" MUST be a single well-formed JSON object string, enclosed in ```json ... ```.
     JSON should have keys:
-    "fe_summary": (string) Summary of steps.
+    "fe_summary": (string) Summary of steps, explicitly mentioning how date columns were handled.
     "final_feature_list": [ (list of strings) ] (feature names in X datasets)
-    "transformer_references": {{ "scaler": "<tool_reported_scaler_ref>", "encoder": "<ref>" }} (and others)
+    "transformer_references": {{ "scaler": "<tool_reported_scaler_ref>", ... }}
     "untrained_full_pipeline_ref": (string) "<tool_reported_untrained_pipeline_ref>"
-    "data_references": {{ 
-        "X_train": "<tool_reported_X_train_ref>", 
-        "y_train": "<tool_reported_y_train_ref>", (and for val, test)
-    }}
-    Begin.
+    "data_references": {{ "X_train": "<X_train_ref>", "y_train": "<y_train_ref>", ... }}
+    Begin. Address date feature engineering first.
     """
     final_answer_json_string = run_generic_react_loop(prompt_content, state.get("max_react_iterations", 12), fe_tool_context_hint)
     parsed_data = parse_llm_json_final_answer(final_answer_json_string, "FE report generation failed.")
@@ -382,12 +351,9 @@ def evaluation_node(state: MultiAgentPipelineState) -> Dict[str, any]:
     parsed_data = parse_llm_json_final_answer(final_answer_json_string, "Evaluation report generation failed.")
 
     metrics_val = parsed_data.get("validation_metrics", {})
-    # The tool is now prompted to return metrics as a dict string, which JSON parser should handle if LLM includes it correctly.
-    # If it's a string that needs parsing, it's handled here.
     if isinstance(metrics_val, str): 
         try:
-            # Attempt to clean if it's a string like "Metrics calculated: {'accuracy': 0.90 ...}"
-            metrics_str_cleaned = re.sub(r"^[^\(\{]*", "", metrics_val) # Remove prefix before { or (
+            metrics_str_cleaned = re.sub(r"^[^\(\{]*", "", metrics_val) 
             if metrics_str_cleaned:
                  metrics = json.loads(metrics_str_cleaned.replace("'", "\"")) 
             else:
@@ -399,7 +365,6 @@ def evaluation_node(state: MultiAgentPipelineState) -> Dict[str, any]:
         metrics = metrics_val
     else:
         metrics = {}
-
 
     return {
         "current_stage_completed": "Evaluation",
@@ -425,7 +390,7 @@ pipeline_app = workflow.compile()
 
 # --- 7. Example Invocation ---
 if __name__ == "__main__":
-    print("Starting ML Pipeline with Agent-Managed References & JSON Output (v2)...")
+    print("Starting ML Pipeline with Agent-Managed References & JSON Output (Date Handling Focus)...")
 
     os.makedirs("dummy_pipeline_data", exist_ok=True)
     initial_data_paths = {
@@ -450,39 +415,27 @@ if __name__ == "__main__":
         "data_paths": initial_data_paths,
         "target_column_name": "Target",
         "problem_type": "regression", 
-        "max_react_iterations": 7 
+        "max_react_iterations": 8 # Adjusted iterations
     }
 
-    config = {"configurable": {"thread_id": "ml_pipeline_agent_refs_json_003"}} # Changed thread_id
+    config = {"configurable": {"thread_id": "ml_pipeline_agent_refs_json_004_datefix"}}
 
     print("\nInvoking pipeline stream:")
     final_state_accumulator = {} 
 
-    # Corrected streaming loop
     for chunk in pipeline_app.stream(initial_pipeline_state, config=config, stream_mode="updates"):
-        # chunk is a dictionary, e.g., {"eda_agent": {"eda_report": ..., "current_stage_completed": "EDA"}}
-        for node_name, node_output_dict in chunk.items(): 
-            print(f"\n<<< Update from Node: {node_name} >>>")
+        for node_name_in_chunk, node_output_dict in chunk.items(): 
+            print(f"\n<<< Update from Node: {node_name_in_chunk} >>>")
             if isinstance(node_output_dict, dict):
-                final_state_accumulator.update(node_output_dict) # Accumulate the updates
-                for k_item, v_item in node_output_dict.items(): # Iterate through the actual updates
+                final_state_accumulator.update(node_output_dict) 
+                for k_item, v_item in node_output_dict.items(): 
                     print(f"  {k_item}: {str(v_item)[:350]}...")
             else:
-                print(f"  Unexpected output format from node {node_name}: {str(node_output_dict)[:350]}...")
-
+                print(f"  Unexpected output format from node {node_name_in_chunk}: {str(node_output_dict)[:350]}...")
 
     print("\n\n--- Final Pipeline State (from accumulated stream) ---")
     if final_state_accumulator:
         print(json.dumps(final_state_accumulator, indent=2, default=str))
-    else: # Fallback if stream mode didn't populate accumulator as expected
-        # This part might not be strictly necessary if the stream accumulator works,
-        # but can be a fallback for getting the final complete state.
-        print("Stream accumulator was empty, attempting invoke to get final state...")
-        final_state_result_invoke = pipeline_app.invoke(initial_pipeline_state, config=config)
-        if final_state_result_invoke:
-            print("\n--- Final Pipeline State (from invoke) ---")
-            print(json.dumps(final_state_result_invoke, indent=2, default=str))
-
     
     for v_path in initial_data_paths.values():
         if os.path.exists(v_path): os.remove(v_path)
