@@ -15,20 +15,24 @@ class MultiAgentPipelineState(TypedDict):
 
     # Output from EdaAgentNode: A structured report
     eda_report: Optional[Dict[str, any]] 
+    eda_model_suggestions: Optional[List[str]] # New: Model suggestions from EDA
 
     # Output from FeatureEngineeringAgentNode
     fe_applied_steps_summary: Optional[str]
     fe_final_feature_list: Optional[List[str]] 
-    fe_X_train_ref: Optional[str] # Typically .pkl for DataFrames
-    fe_y_train_ref: Optional[str] # Typically .pkl
+    fe_X_train_ref: Optional[str] 
+    fe_y_train_ref: Optional[str]
     fe_X_val_ref: Optional[str]   
     fe_y_val_ref: Optional[str]
     fe_X_test_ref: Optional[str]  
-    fe_transformer_references: Optional[Dict[str, str]] # e.g., {"scaler": "scaler.joblib"}
-    fe_untrained_full_pipeline_ref: Optional[str] # e.g., "untrained_pipeline.joblib"
+    fe_transformer_references: Optional[Dict[str, str]] 
+    fe_untrained_full_pipeline_ref: Optional[str] 
+    fe_custom_transformer_module: Optional[str] 
+    fe_selected_model_type: Optional[str] # New: Model type chosen by FE based on EDA
+    fe_initial_hyperparameter_hints: Optional[Dict[str, any]] # New: Initial hints
 
     # Output from ModelingNode
-    model_trained_pipeline_ref: Optional[str] # e.g., "trained_pipeline.joblib"
+    model_trained_pipeline_ref: Optional[str] 
     model_training_summary: Optional[str]
 
     # Output from Evaluation Node
@@ -46,12 +50,6 @@ class MultiAgentPipelineState(TypedDict):
 def agno_python_tool_interface(instruction: str, agent_context_hint: Optional[str] = None) -> str:
     """
     This function is the integration point for your actual agno_python_tool.
-    It takes a natural language instruction from the LLM.
-    Your tool internally generates and executes Python code based on this instruction.
-    It MUST return a string observation that includes clear references (FULL FILENAMES 
-    including extensions like .pkl for data, .joblib for sklearn objects, .png for plots) 
-    for ANY artifact that was created or saved as a result of the instruction, 
-    IF THE LLM'S INSTRUCTION ASKED FOR THE ARTIFACT TO BE SAVED AND ITS REFERENCE REPORTED.
     """
     print(f"    [AGNO_PYTHON_TOOL INTERFACE] Sending Instruction to your tool:\n    '{instruction}'")
     if agent_context_hint:
@@ -63,28 +61,31 @@ def agno_python_tool_interface(instruction: str, agent_context_hint: Optional[st
     if "load the dataset from" in instruction_lower and "report its reference" in instruction_lower:
         if "train_data.csv" in instruction:
             sim_observation += "Dataset 'dummy_pipeline_data/train_data.csv' loaded. Tool reports its reference as 'train_df_loaded_ref.pkl'."
-        # ... other load simulations for val/test ...
-    elif "clean data referenced by" in instruction_lower and "report the new reference" in instruction_lower:
-        match = re.search(r"clean data referenced by '([^']+)'", instruction_lower)
-        old_ref = match.group(1) if match else "unknown_ref"
-        sim_observation += f"Data '{old_ref}' cleaned. New reference reported by tool: 'cleaned_{old_ref.replace('.pkl','_v2.pkl')}'."
-    elif "generate a histogram for" in instruction_lower and "save it, report the filename, and provide a textual description" in instruction_lower:
-        match = re.search(r"histogram for the '([^']+)' column", instruction_lower)
-        col_name = match.group(1) if match else "unknown_col"
-        sim_observation += f"Histogram for '{col_name}' generated. Plot saved by tool as '{col_name}_histogram.png'. Description: The '{col_name}' distribution is [simulated_description]."
-    
-    # FE specific: Saving sklearn objects as .joblib
+        elif "val_data.csv" in instruction:
+            sim_observation += "Dataset 'dummy_pipeline_data/val_data.csv' loaded. Tool reports its reference as 'val_df_loaded_ref.pkl'."
+        elif "test_data.csv" in instruction:
+            sim_observation += "Dataset 'dummy_pipeline_data/test_data.csv' loaded. Tool reports its reference as 'test_df_loaded_ref.pkl'."
+    elif "identify date columns in 'train_df_loaded_ref.pkl' and parse them. report parsed columns." in instruction_lower:
+        sim_observation += "Identified 'Date' column in 'train_df_loaded_ref.pkl' and parsed to datetime. Parsed date columns: ['Date']."
+    elif "create a numeric-only version of 'train_df_loaded_ref.pkl' by excluding the 'date' column. report the new reference." in instruction_lower:
+        sim_observation += "Numeric-only version of 'train_df_loaded_ref.pkl' created (excluding 'Date'). New reference is 'train_df_numeric_for_corr.pkl'."
+    elif "generate a correlation heatmap for 'train_df_numeric_for_corr.pkl'" in instruction_lower:
+        sim_observation += "Correlation heatmap 'correlation_matrix_eda.png' saved for 'train_df_numeric_for_corr.pkl'. Description: Strong positive correlation (0.85) between 'Price' and 'FeatureA'."
+    elif "clean data referenced by 'train_df_loaded_ref.pkl' (after date parsing) and report the new reference" in instruction_lower:
+        sim_observation += "Data 'train_df_loaded_ref.pkl' (with parsed dates) cleaned. New reference reported by tool: 'cleaned_train_df_eda.pkl'."
+    elif "define a custom transformer class named 'mycustomfeatureextractor'" in instruction_lower and "ensure its definition is saved to 'user_custom_transformers.py'" in instruction_lower:
+        sim_observation += "Custom transformer 'MyCustomFeatureExtractor' defined and its source code saved to 'user_custom_transformers.py'."
     elif "fit a standardscaler" in instruction_lower and "save it as a .joblib file and report its reference" in instruction_lower:
         sim_observation += "StandardScaler fitted. Saved by tool. Reference is 'fitted_price_scaler.joblib'."
-    elif "fit a onehotencoder" in instruction_lower and "save it as a .joblib file and report its reference" in instruction_lower:
-        sim_observation += "OneHotEncoder fitted. Saved by tool. Reference is 'fitted_category_encoder.joblib'."
-    elif "create a scikit-learn pipeline" in instruction_lower and "save this untrained pipeline as a .joblib file and report its reference" in instruction_lower:
-        sim_observation += "Untrained Scikit-learn pipeline created. Saved by tool. Reference is 'untrained_full_ml_pipeline.joblib'."
-    
-    # Modeling specific: Saving trained pipeline as .joblib
+    elif "create a scikit-learn pipeline" in instruction_lower and "untrained randomforestregressor" in instruction_lower and "save this untrained pipeline as a .joblib file and report its reference" in instruction_lower:
+        sim_observation += "Untrained Scikit-learn pipeline created including RandomForestRegressor. Saved by tool. Reference is 'untrained_full_ml_pipeline_rfr.joblib'."
+    elif "create a scikit-learn pipeline" in instruction_lower and "untrained linearregression" in instruction_lower and "save this untrained pipeline as a .joblib file and report its reference" in instruction_lower:
+        sim_observation += "Untrained Scikit-learn pipeline created including LinearRegression. Saved by tool. Reference is 'untrained_full_ml_pipeline_lr.joblib'."
     elif "train the pipeline" in instruction_lower and "save the trained pipeline as a .joblib file and report its reference" in instruction_lower:
-        sim_observation += "Pipeline trained. Trained pipeline saved by tool. Reference is 'trained_model_pipeline.joblib'."
-    
+        model_ref = "trained_model_pipeline.joblib"
+        if "rfr" in instruction_lower: model_ref = "trained_rfr_pipeline.joblib"
+        elif "lr" in instruction_lower: model_ref = "trained_lr_pipeline.joblib"
+        sim_observation += f"Pipeline trained. Trained pipeline saved by tool. Reference is '{model_ref}'."
     elif "separate target" in instruction_lower and "report new references for x_train, y_train" in instruction_lower:
         sim_observation += "Target separated. New references reported by tool: X_train='X_train_final_ref.pkl', y_train='y_train_final_ref.pkl', X_val='X_val_final_ref.pkl', y_val='y_val_final_ref.pkl', X_test='X_test_final_ref.pkl'."
     elif "calculate classification metrics" in instruction_lower:
@@ -92,7 +93,7 @@ def agno_python_tool_interface(instruction: str, agent_context_hint: Optional[st
     elif "calculate regression metrics" in instruction_lower:
         sim_observation += "Metrics calculated by tool and reported as: {{'mse': 12.3, 'r_squared': 0.81}}."
     else:
-        sim_observation += "Task completed. If specific artifacts were requested to be saved and their references reported (including .joblib for sklearn objects or .pkl for data), those details are included above."
+        sim_observation += "Task completed. If specific artifacts were requested to be saved and their references reported, those details are included above."
             
     print(f"    [AGNO_PYTHON_TOOL INTERFACE] Returning Observation:\n    '{sim_observation}'")
     return sim_observation
@@ -164,35 +165,39 @@ def parse_llm_json_final_answer(final_answer_json_string: str, default_error_mes
 # --- 5. Define Agent Nodes ---
 
 def eda_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
-    print("\n--- EDA Agent Node Running (Date Handling Emphasis) ---")
+    print("\n--- EDA Agent Node Running (Model Suggestion Focus) ---")
     data_paths = state["data_paths"]
     target_col = state.get("target_column_name", "Target")
-    eda_tool_context_hint = f"Initial data paths: {json.dumps(data_paths)}. Target column: '{target_col}'. Task: EDA."
+    problem_type = state.get("problem_type", "unknown")
+    eda_tool_context_hint = f"Initial data paths: {json.dumps(data_paths)}. Target column: '{target_col}'. Problem type: {problem_type}. Task: EDA."
 
     prompt_content = f"""You are an Expert EDA Data Scientist performing iterative research.
-    The PythonTool you use accepts natural language instructions. It will report back references (FULL FILENAMES including extensions like .pkl for data, .png for plots) to any data it loads/creates and plots it saves.
-    When you instruct the PythonTool to generate a plot, ALSO instruct it to provide a textual description of the plot's key features.
-    You MUST instruct the tool to report references for all created/modified data and plots.
+    PythonTool takes NL instructions and reports data/plot references. When requesting plots, also ask for textual descriptions of their key features.
+    You MUST instruct the tool to report references (FULL FILENAMES including extensions) for all created/modified data and plots.
 
     Initial context for PythonTool: {eda_tool_context_hint}
 
-    Your EDA Process (Strict Order for Date Handling):
-    1.  Load Datasets: Instruct PythonTool to load all datasets (train, val, test) using paths from context. Ask it to report the references it assigns (e.g., 'initial_train_df_ref.pkl').
-    2.  Identify and Parse Date Columns: Using reported references, instruct PythonTool to identify date/timestamp columns and parse them to datetime objects. Ask for confirmation.
-    3.  Basic Structure & Quality (Initial): Check structure, quality.
-    4.  Prepare Data for Numeric Analysis: Instruct PythonTool: "For data referenced by 'initial_train_df_ref.pkl', create a new version suitable for numeric analysis (e.g. correlation heatmaps). Ensure only numeric columns (and target, if numeric) are present. If date columns were parsed, EXCLUDE the original datetime object column. Report the NEW reference for this numeric-ready dataset (e.g., 'train_df_numeric_ref.pkl')."
-    5.  Numerical EDA: Using NEW numeric-ready references, compute correlations (ask for plot ref & description).
-    6.  Distribution Analysis: Using initial or cleaned data references, analyze distributions (especially '{target_col}'). Ask for plot refs & descriptions.
-    7.  Further Data Quality & Cleaning: If cleaning is done, instruct PythonTool to save cleaned datasets and report their FINAL references (e.g., 'cleaned_train_final_eda.pkl').
-    8.  Iterative Research & Conclude.
+    Your EDA Process:
+    1. Load Datasets & Parse Dates: Instruct tool to load train, val, test data; report references. Identify and parse date columns; confirm parsing.
+    2. Initial Structure & Quality: Check shapes, dtypes, head/tail. Initial check for missing values, outliers (request plot refs & descriptions).
+    3. Prepare for Numeric Analysis: Instruct tool to create a numeric-only version of data (excluding raw date/datetime objects after feature extraction if any) for correlations. Report NEW reference.
+    4. Numerical EDA: Using numeric-ready references, compute correlations (ask for plot ref & description).
+    5. Distribution Analysis: Analyze distributions of key features, especially '{target_col}'. Ask for plot refs & descriptions.
+    6. Data Cleaning: If cleaning is done, instruct tool to save cleaned datasets and report FINAL references (e.g., 'cleaned_train_final_eda.pkl').
+    7. Iterative Research & Conclude.
 
     ReAct Format: Action: Python, Action Input: <NL instruction>.
     "Final Answer:" MUST be a single well-formed JSON object string, enclosed in ```json ... ```.
-    JSON keys: "eda_summary", "data_quality_report": {{ "missing_values": [], "outliers": [], "date_columns_analysis": [] }}, "key_insights": [], "fe_suggestions": [], 
+    The JSON object MUST have keys:
+    "eda_summary": (string) Comprehensive summary, INTEGRATING plot descriptions.
+    "data_quality_report": {{ "missing_values": [...], "outliers": [...], "date_columns_analysis": [...] }}
+    "key_insights": [ (list of strings, e.g., "Insight: 'Price' distribution (see 'price_dist.png') is right-skewed.") ]
+    "model_suggestions": [ (list of strings, e.g., "Suggest LinearRegression due to observed linear trends and moderate number of features.", "Consider RandomForestRegressor if non-linearities are suspected from scatter plots.") ]
+    "fe_suggestions": [ (list of strings, e.g., "FE Suggestion: For parsed date column 'Date' in 'cleaned_train_final_eda.pkl', extract Year, Month, DayOfWeek as features, then DROP the original 'Date' column.") ]
     "artifact_references": {{ 
-        "processed_train_data": "<tool_reported_FINAL_train_ref.pkl>",
-        "processed_val_data": "<tool_reported_FINAL_val_ref.pkl>",
-        "processed_test_data": "<tool_reported_FINAL_test_ref.pkl>",
+        "processed_train_data": "<tool_reported_FINAL_train_ref.pkl_after_all_eda_cleaning>",
+        "processed_val_data": "<tool_reported_FINAL_val_ref.pkl_after_all_eda_cleaning>",
+        "processed_test_data": "<tool_reported_FINAL_test_ref.pkl_after_all_eda_cleaning>",
         "plots": {{ "target_distribution": "<plot_ref.png>", "correlation_matrix": "<plot_ref.png>" }}
     }}
     Begin.
@@ -204,6 +209,7 @@ def eda_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
         "comprehensive_summary": parsed_data.get("eda_summary", "Summary not parsed."),
         "data_quality": parsed_data.get("data_quality_report", {}),
         "key_insights": parsed_data.get("key_insights", []),
+        "model_suggestions": parsed_data.get("model_suggestions", []), # New
         "fe_suggestions": parsed_data.get("fe_suggestions", []),
         "artifact_references": parsed_data.get("artifact_references", {"plots": {}})
     }
@@ -211,7 +217,9 @@ def eda_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
     plot_refs = artifact_refs.get("plots", {})
     
     return {
-        "current_stage_completed": "EDA", "eda_report": eda_report_dict, 
+        "current_stage_completed": "EDA", 
+        "eda_report": eda_report_dict, 
+        "eda_model_suggestions": eda_report_dict["model_suggestions"], # Pass to state
         "eda_comprehensive_summary": eda_report_dict["comprehensive_summary"],
         "eda_identified_issues": eda_report_dict.get("data_quality",{}).get("missing_values", []) + eda_report_dict.get("data_quality",{}).get("outliers", []),
         "eda_fe_suggestions": eda_report_dict["fe_suggestions"],
@@ -222,37 +230,40 @@ def eda_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
     }
 
 def feature_engineering_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
-    print("\n--- Feature Engineering Agent Node Running ---")
+    print("\n--- Feature Engineering Agent Node Running (EDA-Informed Model Choice) ---")
     eda_report = state.get("eda_report", {}) 
     train_ref_from_eda = eda_report.get("artifact_references", {}).get("processed_train_data", "train_eda.pkl")
     val_ref_from_eda = eda_report.get("artifact_references", {}).get("processed_val_data", "val_eda.pkl")
     test_ref_from_eda = eda_report.get("artifact_references", {}).get("processed_test_data", "test_eda.pkl")
     suggestions_from_eda = eda_report.get("fe_suggestions", [])
-    issues_from_eda = eda_report.get("data_quality", {}) 
+    model_suggestions_from_eda = state.get("eda_model_suggestions", []) # Get model suggestions
     target_col = state.get("target_column_name", "Target")
 
-    fe_tool_context_hint = (f"Input data refs from EDA: train='{train_ref_from_eda}', val='{val_ref_from_eda}', test='{test_ref_from_eda}'. "
-                            f"Target: '{target_col}'. EDA FE Suggestions: {json.dumps(suggestions_from_eda)}. EDA Issues: {json.dumps(issues_from_eda)}")
+    fe_tool_context_hint = (f"Input data refs: train='{train_ref_from_eda}', val='{val_ref_from_eda}', test='{test_ref_from_eda}'. "
+                            f"Target: '{target_col}'. EDA FE Suggestions: {json.dumps(suggestions_from_eda)}. EDA Model Suggestions: {json.dumps(model_suggestions_from_eda)}")
 
     prompt_content = f"""You are a Feature Engineering Specialist. PythonTool takes NL instructions.
     Context from EDA:
-    - Input Train Data Ref for PythonTool: {train_ref_from_eda} (tool should use this as 'current_train_df')
-    - Input Val Data Ref for PythonTool: {val_ref_from_eda} (as 'current_val_df')
-    - Input Test Data Ref for PythonTool: {test_ref_from_eda} (as 'current_test_df')
-    - EDA FE Suggestions: {json.dumps(suggestions_from_eda) if suggestions_from_eda else 'Perform standard best-practice FE.'}
+    - Input Train Data Ref: {train_ref_from_eda}
+    - Input Val Data Ref: {val_ref_from_eda}
+    - Input Test Data Ref: {test_ref_from_eda}
+    - EDA FE Suggestions: {json.dumps(suggestions_from_eda) if suggestions_from_eda else 'Perform standard FE.'}
+    - EDA Model Suggestions: {json.dumps(model_suggestions_from_eda) if model_suggestions_from_eda else 'No specific model suggested, choose a robust default like RandomForestRegressor/Classifier.'}
     - Target Column: '{target_col}'
 
     Your tasks:
     1. Instruct PythonTool to use/load datasets using EDA references.
-    2. Based on EDA suggestions, instruct tool to:
-        a. Fit transformers (scalers, encoders, imputers) on training data. Ask tool to SAVE each as a .joblib file and report its full filename reference (e.g., 'fitted_scaler.joblib').
-        b. Create a Scikit-learn `Pipeline` object including these transformers AND an UNTRAINED model estimator. Ask tool to SAVE this untrained pipeline as a .joblib file and report its full filename reference.
-    3. Separate features (X) and target ('{target_col}') from the (EDA processed or further transformed) train/val data. Create X_test. Ask tool to report references for X_train, y_train, etc. (e.g., 'X_train_fe.pkl') and the final feature list.
+    2. Implement date FE (extract components, DROP original date column) and other FE steps based on EDA suggestions. Apply consistently.
+    3. Create/Save transformers (scalers, encoders) as .joblib files and report their full filename references.
+    4. Based on EDA Model Suggestions (or a default like RandomForestRegressor for regression, RandomForestClassifier for classification if none provided), instruct PythonTool to create an UNTRAINED Scikit-learn `Pipeline` object. This pipeline should include relevant transformers AND the chosen UNTRAINED model estimator. Ask tool to SAVE this untrained pipeline as a .joblib file and report its full filename reference. Also report the selected model type.
+    5. Separate features (X) and target ('{target_col}') from transformed data. Ask tool to report references for X_train, y_train, etc., and the final feature list.
 
     ReAct Format: Action: Python, Action Input: <NL instruction>.
     "Final Answer:" MUST be a single well-formed JSON object string, enclosed in ```json ... ```.
     JSON should have keys:
-    "fe_summary": (string) Summary of steps.
+    "fe_summary": (string) Summary, mentioning selected model type.
+    "selected_model_type": (string) e.g., "RandomForestRegressor" or "LinearRegression"
+    "initial_hyperparameter_hints": {{ (object, optional) e.g., "n_estimators": 100 }}
     "final_feature_list": [ (list of strings) ]
     "transformer_references": {{ "scaler": "<tool_reported_scaler_ref.joblib>", ... }}
     "untrained_full_pipeline_ref": (string) "<tool_reported_untrained_pipeline_ref.joblib>"
@@ -266,9 +277,12 @@ def feature_engineering_agent_node(state: MultiAgentPipelineState) -> Dict[str, 
     return {
         "current_stage_completed": "FeatureEngineering",
         "fe_applied_steps_summary": parsed_data.get("fe_summary", "FE Summary not parsed."),
+        "fe_selected_model_type": parsed_data.get("selected_model_type", " RandomForestRegressor"), # Default if not specified
+        "fe_initial_hyperparameter_hints": parsed_data.get("initial_hyperparameter_hints", {}),
         "fe_final_feature_list": parsed_data.get("final_feature_list", []),
         "fe_transformer_references": parsed_data.get("transformer_references", {}),
-        "fe_untrained_full_pipeline_ref": parsed_data.get("untrained_full_pipeline_ref", "default_untrained_pipe.joblib"), # Default to .joblib
+        "fe_custom_transformer_module": parsed_data.get("custom_transformer_module"), 
+        "fe_untrained_full_pipeline_ref": parsed_data.get("untrained_full_pipeline_ref", "default_untrained_pipe.joblib"),
         "fe_X_train_ref": data_refs.get("X_train", "default_X_train_fe.pkl"),
         "fe_y_train_ref": data_refs.get("y_train", "default_y_train_fe.pkl"),
         "fe_X_val_ref": data_refs.get("X_val", "default_X_val_fe.pkl"),
@@ -279,29 +293,33 @@ def feature_engineering_agent_node(state: MultiAgentPipelineState) -> Dict[str, 
 
 def modeling_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
     print("\n--- Modeling Agent Node Running ---")
-    untrained_pipeline_ref = state.get("fe_untrained_full_pipeline_ref", "untrained_pipeline.joblib") # Expect .joblib
+    untrained_pipeline_ref = state.get("fe_untrained_full_pipeline_ref", "untrained_pipeline.joblib")
     x_train_ref = state.get("fe_X_train_ref", "X_train_fe.pkl") 
     y_train_ref = state.get("fe_y_train_ref", "y_train_fe.pkl")
+    selected_model_type = state.get("fe_selected_model_type", "UnknownModel")
+    hyperparameter_hints = state.get("fe_initial_hyperparameter_hints", {})
     
-    model_tool_context_hint = (f"Untrained pipeline ref: '{untrained_pipeline_ref}'. "
-                               f"Train with X_train_ref: '{x_train_ref}', y_train_ref: '{y_train_ref}'.")
+    model_tool_context_hint = (f"Untrained pipeline ref: '{untrained_pipeline_ref}' (contains {selected_model_type}). "
+                               f"Train with X_train_ref: '{x_train_ref}', y_train_ref: '{y_train_ref}'. "
+                               f"Initial hyperparameter hints: {json.dumps(hyperparameter_hints)}")
 
     prompt_content = f"""You are a Modeling Specialist. PythonTool takes NL instructions.
     Context from Feature Engineering:
-    - Untrained Full Scikit-learn Pipeline Reference: {untrained_pipeline_ref} (expected to be a .joblib file)
-    - X_train Reference (for training the pipeline): {x_train_ref}
-    - y_train Reference (for training the pipeline): {y_train_ref}
+    - Untrained Full Scikit-learn Pipeline Reference: {untrained_pipeline_ref} (this includes a '{selected_model_type}' estimator)
+    - X_train Reference (for training): {x_train_ref}
+    - y_train Reference (for training): {y_train_ref}
+    - Initial Hyperparameter Hints: {json.dumps(hyperparameter_hints) if hyperparameter_hints else 'Use estimator defaults.'}
 
     Your task:
     1. Instruct PythonTool to load the untrained pipeline from '{untrained_pipeline_ref}'.
     2. Instruct PythonTool to load X_train from '{x_train_ref}' and y_train from '{y_train_ref}'.
-    3. Instruct PythonTool to train (fit) the loaded pipeline using this X_train and y_train.
+    3. Instruct PythonTool to train (fit) the loaded pipeline using this X_train and y_train. If hyperparameter hints are provided, consider incorporating them if your tool can set parameters before fitting.
     4. Instruct PythonTool to save the ENTIRE TRAINED PIPELINE as a .joblib file and report its exact reference including extension.
 
     ReAct Format: Action: Python, Action Input: <NL instruction>.
     "Final Answer:" MUST be a single well-formed JSON object string, enclosed in ```json ... ```.
     JSON should have keys:
-    "model_training_summary": (string) Summary of training.
+    "model_training_summary": (string) Summary of training, noting model type and any params used.
     "trained_pipeline_ref": (string) "<tool_reported_TRAINED_pipeline_ref.joblib>"
     Begin.
     """
@@ -316,22 +334,26 @@ def modeling_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
 
 def evaluation_node(state: MultiAgentPipelineState) -> Dict[str, any]:
     print("\n--- Evaluation Agent Node Running ---")
-    trained_pipeline_ref = state.get("model_trained_pipeline_ref", "trained_model_pipeline.joblib") # Expect .joblib
+    trained_pipeline_ref = state.get("model_trained_pipeline_ref", "trained_model_pipeline.joblib") 
     x_val_ref = state.get("fe_X_val_ref", "X_val_fe.pkl") 
     y_val_ref = state.get("fe_y_val_ref", "y_val_fe.pkl") 
     x_test_ref = state.get("fe_X_test_ref") 
     problem_type = state.get("problem_type", "classification")
+    custom_transformer_module = state.get("fe_custom_transformer_module") 
 
     eval_tool_context_hint = (
         f"Trained pipeline ref: '{trained_pipeline_ref}'. Val X: '{x_val_ref}', Val y: '{y_val_ref}'. "
         f"Test X: '{x_test_ref if x_test_ref else 'N/A'}'. Problem: {problem_type}."
     )
+    if custom_transformer_module:
+        eval_tool_context_hint += f" Custom transformer module to ensure is available for loading: '{custom_transformer_module}'."
+
     metrics_to_request = "accuracy, precision, recall, F1-score, ROC AUC" if problem_type == "classification" else "MSE, RMSE, MAE, R-squared"
 
     prompt_content = f"""You are an Evaluation Specialist. PythonTool takes NL instructions.
     Context: {eval_tool_context_hint}
     Tasks:
-    1. Load trained pipeline '{trained_pipeline_ref}' (expected to be a .joblib file).
+    1. Load trained pipeline '{trained_pipeline_ref}'. If a custom transformer module ('{custom_transformer_module}') was used, ensure the tool's environment can access it.
     2. Load validation data X_val from '{x_val_ref}' and y_val from '{y_val_ref}'.
     3. Make predictions on X_val.
     4. Calculate metrics: {metrics_to_request}. Instruct tool to report as a dictionary string within its observation.
@@ -388,7 +410,7 @@ pipeline_app = workflow.compile()
 
 # --- 7. Example Invocation ---
 if __name__ == "__main__":
-    print("Starting ML Pipeline with Agent-Managed References & JSON Output (Joblib Focus)...")
+    print("Starting ML Pipeline with EDA-Informed Model Suggestion...")
 
     os.makedirs("dummy_pipeline_data", exist_ok=True)
     initial_data_paths = {
@@ -416,7 +438,7 @@ if __name__ == "__main__":
         "max_react_iterations": 8 
     }
 
-    config = {"configurable": {"thread_id": "ml_pipeline_agent_refs_json_006_joblib"}} # Changed thread_id
+    config = {"configurable": {"thread_id": "ml_pipeline_model_suggestion_001"}}
 
     print("\nInvoking pipeline stream:")
     final_state_accumulator = {} 
