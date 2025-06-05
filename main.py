@@ -91,8 +91,7 @@ def agno_python_tool_interface(instruction: str, agent_context_hint: Optional[st
         sim_observation += ("Date features (Year, Month, Day, DayOfWeek) extracted from 'Date' column. "
                            "Original 'Date' column (datetime object) has been dropped from train, val, and test data. "
                            "New data references reported by tool: 'train_with_date_features.pkl', 'val_with_date_features.pkl', 'test_with_date_features.pkl'.")
-    elif "clean data referenced by" in instruction_lower and "report the new reference" in instruction_lower: # General cleaning after date handling
-        # This needs to be specific if EDA calls it multiple times for train/val/test
+    elif "clean data referenced by" in instruction_lower and "report the new reference" in instruction_lower: 
         if "'train_df_loaded_ref.pkl'" in instruction_lower or "'train_df_numeric_for_corr.pkl'" in instruction_lower or "'train_with_date_features.pkl'" in instruction_lower :
              sim_observation += "Training data cleaned. New reference reported by tool: 'cleaned_train_final_eda.pkl'."
         elif "'val_df_loaded_ref.pkl'" in instruction_lower or "'val_with_date_features.pkl'" in instruction_lower :
@@ -242,9 +241,9 @@ def eda_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
     The JSON object (your EDA Manual) MUST have these top-level keys:
     "eda_summary": (string) Comprehensive narrative summary of all findings, integrating insights from plot descriptions.
     "data_profile": {{
-        "train_data_initial_ref": "<tool_reported_initial_train_ref>",
-        "val_data_initial_ref": "<tool_reported_initial_val_ref>",
-        "test_data_initial_ref": "<tool_reported_initial_test_ref>",
+        "train_data_initial_ref": "<tool_reported_initial_train_ref.pkl>",
+        "val_data_initial_ref": "<tool_reported_initial_val_ref.pkl>",
+        "test_data_initial_ref": "<tool_reported_initial_test_ref.pkl>",
         "initial_shapes": {{ "train": [rows, cols], ...}},
         "column_dtypes_after_parsing": {{ "column_name": "dtype_after_parsing", ... }}
     }},
@@ -256,10 +255,10 @@ def eda_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
     "key_insights": [ (list of strings, e.g., "Insight: 'Price' distribution (see 'price_dist.png') is right-skewed, suggesting a log transform for modeling.") ],
     "model_suggestions": [ (list of strings, e.g., "RandomForestRegressor for non-linearities") ],
     "fe_suggestions": [ (list of strings, e.g., "FE Suggestion: For parsed date column 'Date' in 'cleaned_train_final_eda.pkl', extract Year, Month, DayOfWeek as features, then DROP the original 'Date' column.") ], 
-    "artifact_references": {{ // ALL references reported by the tool for artifacts created/used
-        "final_processed_train_data": "<tool_reported_FINAL_train_ref.pkl_after_all_eda_cleaning>",
-        "final_processed_val_data": "<tool_reported_FINAL_val_ref.pkl_after_all_eda_cleaning>",
-        "final_processed_test_data": "<tool_reported_FINAL_test_ref.pkl_after_all_eda_cleaning>",
+    "artifact_references": {{ 
+        "processed_train_data": "<tool_reported_FINAL_train_ref.pkl_after_all_eda_cleaning>",
+        "processed_val_data": "<tool_reported_FINAL_val_ref.pkl_after_all_eda_cleaning>",
+        "processed_test_data": "<tool_reported_FINAL_test_ref.pkl_after_all_eda_cleaning>",
         "plots": {{ "target_distribution": "<plot_ref.png>", "correlation_matrix": "<plot_ref.png>", ... }}
     }}
     Begin your EDA research.
@@ -268,38 +267,37 @@ def eda_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
     
     eda_report_output = parse_llm_json_final_answer(final_answer_json_string, "EDA report generation failed.")
     
-    # For convenience, also extract some top-level fields for direct use in pipeline state
-    artifact_refs = eda_report_output.get("artifact_references", {})
+    artifact_refs = eda_report_output.get("artifact_references", {}) # Corrected key from "artifact_catalog" to "artifact_references"
     
     return {
         "current_stage_completed": "EDA", 
-        "eda_report": eda_report_output, # This is the comprehensive "manual"
+        "eda_report": eda_report_output,
         "eda_model_suggestions": eda_report_output.get("model_suggestions", []), 
         "eda_fe_suggestions": eda_report_output.get("fe_suggestions", []),
-        "eda_processed_train_ref": artifact_refs.get("final_processed_train_data", "default_eda_train.pkl"),
-        "eda_processed_val_ref": artifact_refs.get("final_processed_val_data", "default_eda_val.pkl"),
-        "eda_processed_test_ref": artifact_refs.get("final_processed_test_data", "default_eda_test.pkl"),
+        "eda_processed_train_ref": artifact_refs.get("processed_train_data", "default_eda_train.pkl"), # Corrected key
+        "eda_processed_val_ref": artifact_refs.get("processed_val_data", "default_eda_val.pkl"),     # Corrected key
+        "eda_processed_test_ref": artifact_refs.get("processed_test_data", "default_eda_test.pkl"),    # Corrected key
         "eda_plot_references": artifact_refs.get("plots", {})
     }
 
 def feature_engineering_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
     print("\n--- Feature Engineering Agent Node Running (Strict Date Handling) ---")
     eda_report = state.get("eda_report", {}) 
-    # Use the FINAL processed data references from the EDA's artifact_catalog
-    train_ref_from_eda = eda_report.get("artifact_references", {}).get("final_processed_train_data", "train_eda.pkl") 
-    val_ref_from_eda = eda_report.get("artifact_references", {}).get("final_processed_val_data", "val_eda.pkl")
-    test_ref_from_eda = eda_report.get("artifact_references", {}).get("final_processed_test_data", "test_eda.pkl")
+    # Use the FINAL processed data references from the EDA's artifact_references
+    train_ref_from_eda = eda_report.get("artifact_references", {}).get("processed_train_data", "train_eda.pkl") 
+    val_ref_from_eda = eda_report.get("artifact_references", {}).get("processed_val_data", "val_eda.pkl")
+    test_ref_from_eda = eda_report.get("artifact_references", {}).get("processed_test_data", "test_eda.pkl")
     
     suggestions_from_eda = eda_report.get("fe_suggestions", [])
     target_col = state.get("target_column_name", "Target")
 
-    date_fe_suggestion_from_eda = "Ensure date features are extracted and original 'Date' column is dropped if EDA suggested it."
-    for suggestion in suggestions_from_eda: # Prioritize explicit date handling suggestion
+    date_fe_suggestion_from_eda = "Ensure date features are extracted and original 'Date' column is dropped if EDA suggested it or if a 'Date' (datetime) column exists in input."
+    for suggestion in suggestions_from_eda: 
         if "date column" in suggestion.lower() and "extract" in suggestion.lower() and "drop" in suggestion.lower():
             date_fe_suggestion_from_eda = suggestion; break
 
     fe_tool_context_hint = (f"Input data refs from EDA: train='{train_ref_from_eda}', val='{val_ref_from_eda}', test='{test_ref_from_eda}'. "
-                            f"Target: '{target_col}'. EDA FE Suggestions (prioritize date handling): {json.dumps(suggestions_from_eda)}.")
+                            f"Target: '{target_col}'. EDA FE Suggestions: {json.dumps(suggestions_from_eda)}.")
 
     prompt_content = f"""You are a Feature Engineering Specialist for stock price prediction. PythonTool takes NL instructions.
     Context from EDA:
@@ -307,15 +305,15 @@ def feature_engineering_agent_node(state: MultiAgentPipelineState) -> Dict[str, 
     - Input Val Data Ref (already cleaned by EDA): {val_ref_from_eda}
     - Input Test Data Ref (already cleaned by EDA): {test_ref_from_eda}
     - EDA FE Suggestions: {json.dumps(suggestions_from_eda)}
-    - Specific EDA suggestion for 'Date' column (PRIORITIZE THIS if present, otherwise assume parsed Date still needs feature extraction and dropping): "{date_fe_suggestion_from_eda}"
+    - Specific EDA suggestion for 'Date' column (PRIORITIZE THIS): "{date_fe_suggestion_from_eda}"
     - Target Column: '{target_col}'
 
     Your tasks:
     1. Instruct PythonTool to use/load datasets using FINAL PROCESSED references from EDA (e.g., '{train_ref_from_eda}').
-    2. **CRITICAL FIRST STEP for Date Handling:** Implement the EDA suggestion for the 'Date' column: "{date_fe_suggestion_from_eda}". This means instructing the tool to extract numerical date features (Year, Month, Day, DayOfWeek, etc.) from the (already parsed by EDA) 'Date' column AND THEN INSTRUCT THE TOOL TO DROP THE ORIGINAL 'Date' (datetime object) COLUMN from train, val, and test datasets. The tool must report new data references after these operations. If no explicit suggestion for date handling, but a 'Date' column (parsed to datetime) exists in input refs, perform this step anyway.
+    2. **CRITICAL FIRST STEP for Date Handling:** Implement the EDA suggestion for the 'Date' column: "{date_fe_suggestion_from_eda}". This means instructing the tool to extract numerical date features (Year, Month, Day, DayOfWeek, etc.) from the (already parsed by EDA) 'Date' column AND THEN INSTRUCT THE TOOL TO DROP THE ORIGINAL 'Date' (datetime object) COLUMN from train, val, and test datasets. The tool must report new data references after these operations.
     3. Implement other FE steps from EDA suggestions (transformations, imputation) on these date-handled datasets. Apply consistently.
     4. Create and SAVE individual FITTED transformers (scalers, encoders for categoricals like 'Category', imputers) as .joblib files using training data. Ask tool to report full filename references.
-    5. After ALL transformations, separate features (X) and target ('{target_col}'). Ask tool to report references for X_train, y_train, X_val, y_val, X_test (e.g., 'X_train_fe_final.pkl') and the final feature list (this list MUST NOT contain the original 'Date' column).
+    5. After ALL transformations (including date handling), separate features (X) and target ('{target_col}'). Ask tool to report references for X_train, y_train, X_val, y_val, X_test (e.g., 'X_train_fe_final.pkl') and the final feature list (this list MUST NOT contain the original 'Date' column).
 
     ReAct Format: Action: Python, Action Input: <NL instruction>.
     "Final Answer:" MUST be a single well-formed JSON object string, enclosed in ```json ... ```.
@@ -367,7 +365,7 @@ def model_selection_decision_agent_node(state: MultiAgentPipelineState) -> Dict[
 def modeling_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
     print("\n--- Modeling Agent Node Running (Iterates Top Configurations for RMSE) ---")
     top_model_configurations = state.get("top_model_configurations", [])
-    transformer_refs_from_fe = state.get("fe_transformer_references", {}) # These are preprocessors ONLY
+    transformer_refs_from_fe = state.get("fe_transformer_references", {})
     x_train_ref = state.get("fe_X_train_ref"); y_train_ref = state.get("fe_y_train_ref")
     x_val_ref = state.get("fe_X_val_ref"); y_val_ref = state.get("fe_y_val_ref") 
     custom_module = state.get("fe_custom_transformer_module")
@@ -453,7 +451,7 @@ workflow.add_conditional_edges("modeling_agent", modeling_iteration_decision, { 
 workflow.add_edge("evaluation_agent", END)
 
 # To enable persistence (optional):
-# memory = SqliteSaver.from_conn_string("your_langgraph_pipeline.sqlite")
+# memory = SqliteSaver.from_conn_string("your_langgraph_pipeline_vF.sqlite") # Use a unique db name
 # pipeline_app = workflow.compile(checkpointer=memory)
 pipeline_app = workflow.compile()
 
@@ -470,7 +468,7 @@ if __name__ == "__main__":
         with open(v_path, "w") as f: f.write(dummy_header)
         for i in range(10): 
             year_str, month_str, day_str = "2023", f"{((i//30)%12)+1:02d}", f"{(i%28)+1:02d}" 
-            date_val = f"{year_str}-{month_str}-{day_str}" # Correct YYYY-MM-DD format
+            date_val = f"{year_str}-{month_str}-{day_str}" 
             f.write(dummy_row_template.format(date_val=date_val, price=100+i*random.uniform(-2,2) + (i*0.5), volume=10000+i*100 + random.randint(-500,500), 
                                              fA=0.5+i*0.01, fB=1.2-i*0.01, cat='TypeA' if i%3==0 else ('TypeB' if i%3==1 else 'TypeC'), 
                                              text=f"Txt{i}", target= (101+i*0.25 + random.uniform(-1,1)))) 
@@ -479,56 +477,14 @@ if __name__ == "__main__":
         "data_paths": initial_data_paths,
         "target_column_name": "Target", 
         "problem_type": "regression",   
-        "max_react_iterations": 6, # Max ReAct steps within each agent's single decision/action turn
-        "target_rmse": 0.75,       # Target RMSE for tuning loop 
+        "max_react_iterations": 6,      # Max ReAct steps within each agent's single decision/action turn
+        "target_rmse": 0.75,            # Target RMSE for tuning loop 
         "max_modeling_configs_to_try": 2, # How many of the Decision Node's suggestions to try
         "modeling_config_index": 0,     # Initial value for modeling loop over configurations
         "best_rmse_so_far": float('inf'), # Initial value
     }
-
-    # Example of starting from Feature Engineering (simulation)
-    # To actually resume, you'd use the same thread_id with a persistent checkpointer.
-    # For simulation, we manually construct the state EDA would have produced.
-    # Set a flag to True to try this:
-    start_from_fe_simulation = False
-    if start_from_fe_simulation:
-        print("\n *** SIMULATING START FROM FEATURE ENGINEERING *** \n")
-        initial_pipeline_state = {
-            "data_paths": initial_data_paths, "target_column_name": "Target", "problem_type": "regression",
-            "max_react_iterations": 6, "target_rmse": 0.75, "max_modeling_configs_to_try": 2,
-            "modeling_config_index": 0, "best_rmse_so_far": float('inf'),
-            "current_stage_completed": "EDA", # Mark EDA as done
-            "eda_report": { # Populate with plausible outputs from EDA
-                "comprehensive_summary": "Simulated EDA complete. Data loaded, dates parsed. Price is right-skewed.",
-                "data_quality": {"missing_values": ["FeatureC has 5% missing in train"], "outliers": [], "date_columns_analysis": ["'Date' column parsed to datetime."]},
-                "key_insights": ["Price distribution needs normalization."],
-                "model_suggestions": ["RandomForestRegressor", "GradientBoostingRegressor"],
-                "fe_suggestions": ["Log transform 'Price'.", "Extract Year, Month, Day from 'Date' then drop 'Date'."],
-                "artifact_references": {
-                    "processed_train_data": "sim_eda_train.pkl", # These would be real refs
-                    "processed_val_data": "sim_eda_val.pkl",
-                    "processed_test_data": "sim_eda_test.pkl",
-                    "plots": {"price_distribution": "sim_price_dist.png"}
-                }
-            },
-            "eda_model_suggestions": ["RandomForestRegressor", "GradientBoostingRegressor"],
-            "eda_fe_suggestions": ["Log transform 'Price'.", "Extract Year, Month, Day from 'Date' then drop 'Date'."],
-            "eda_processed_train_ref": "sim_eda_train.pkl",
-            "eda_processed_val_ref": "sim_eda_val.pkl",
-            "eda_processed_test_ref": "sim_eda_test.pkl",
-        }
-        # To make LangGraph start at 'feature_engineering_agent' with this state,
-        # you would typically use the checkpointer to resume.
-        # For a direct call (without checkpointer for this example), you could theoretically 
-        # modify the entry point, but it's cleaner to just provide the state and let it flow
-        # if the graph is simple enough or use checkpointer.
-        # For this example, we'll just run the full graph but with pre-populated EDA state.
-        # The entry point remains 'eda_agent', it will see 'current_stage_completed' 
-        # is already 'EDA' if we were to add logic to skip, but here it will just overwrite.
-        # The correct way for true resume is via checkpointer.
-        # This simulation shows what data needs to be ready for FE.
-
-    config = {"configurable": {"thread_id": "ml_pipeline_final_run_001"}}
+    
+    config = {"configurable": {"thread_id": f"ml_pipeline_final_run_{random.randint(1000,9999)}"}} # Unique thread ID per run for checkpointer
 
     print("\nInvoking pipeline stream:")
     final_state_accumulator = {} 
