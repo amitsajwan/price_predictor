@@ -1,41 +1,86 @@
 import os
 import re
 import json 
+import random # For simulating RMSE changes
 from typing import TypedDict, Annotated, List, Dict, Optional, Sequence, Literal
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langchain_openai import ChatOpenAI 
 from langgraph.graph import StateGraph, END
+# from langgraph.checkpoint.sqlite import SqliteSaver # Example for persistence
 
-# --- 1. Define the State for the Pipeline (Relevant Parts) ---
+# --- 1. Define the State for the Pipeline ---
 class MultiAgentPipelineState(TypedDict):
     # Input
     data_paths: Dict[str, str] 
     target_column_name: Optional[str] 
     problem_type: Optional[Literal["classification", "regression"]] 
+    target_rmse: Optional[float] 
 
-    # From EDA
+    # Output from EdaAgentNode: A structured report
     eda_report: Optional[Dict[str, any]] 
+    # Key EDA outputs for direct access by subsequent nodes if needed (derived from eda_report)
     eda_model_suggestions: Optional[List[str]] 
+    eda_fe_suggestions: Optional[List[str]]
+    eda_processed_train_ref: Optional[str] 
+    eda_processed_val_ref: Optional[str]   
+    eda_processed_test_ref: Optional[str]  
+    eda_plot_references: Optional[Dict[str, str]]
 
-    # From Feature Engineering
+    # Output from FeatureEngineeringAgentNode
+    fe_applied_steps_summary: Optional[str]
+    fe_final_feature_list: Optional[List[str]] 
     fe_X_train_ref: Optional[str] 
     fe_y_train_ref: Optional[str]
-    fe_untrained_full_pipeline_ref: Optional[str] # This is key for modeling
-    fe_selected_model_type: Optional[str] 
-    fe_initial_hyperparameter_hints: Optional[Dict[str, any]] 
+    fe_X_val_ref: Optional[str]   
+    fe_y_val_ref: Optional[str]
+    fe_X_test_ref: Optional[str]  
+    fe_transformer_references: Optional[Dict[str, str]] # Refs to individual preprocessors
+    fe_custom_transformer_module: Optional[str] 
+    
+    # Output from ModelSelectionDecisionNode
+    top_model_configurations: Optional[List[Dict[str, any]]] # List of model types + initial params
 
-    # Output from ModelingNode
-    model_trained_pipeline_ref: Optional[str] 
-    model_training_summary: Optional[str]
+    # Modeling Node State & Output
+    model_training_summary: Optional[str] # Summary of all attempts
+    model_trained_pipeline_ref: Optional[str] # Ref to the BEST overall trained pipeline
+    current_rmse: Optional[float] # RMSE from the latest training iteration            
+    best_rmse_so_far: Optional[float] # Best RMSE achieved during modeling        
+    best_model_config_so_far: Optional[Dict[str,any]] # Config that achieved best RMSE
+    best_model_ref_so_far: Optional[str] # Ref to the model that achieved best_rmse_so_far    
+    modeling_config_index: Optional[int] # Index for iterating through top_model_configurations     
+    max_modeling_configs_to_try: Optional[int] # How many configs from top_model_configurations to try
+    modeling_strategy_log: Optional[List[str]] # Log of what's been tried
 
-    # ... other state fields ...
+    # Output from Evaluation Node
+    evaluation_summary: Optional[str] 
+    evaluation_metrics: Optional[Dict[str, float]]
+    test_set_prediction_status: Optional[str]
+
+    # Control and tracking
     current_stage_completed: Optional[str]
-    max_react_iterations: Optional[int]
+    max_react_iterations: Optional[int] # For individual agent ReAct loops
 
 
-# --- 2. Interface for your Agnostic PythonTool (Simulation - Relevant Part) ---
+# --- 2. Interface for your Agnostic PythonTool ---
 # REPLACE THIS FUNCTION WITH THE ACTUAL CALL TO YOUR AGNO_PYTHON_TOOL
+SIMULATED_MODEL_PERFORMANCE_REGISTRY = {} # To make RMSE change with "params" for different model types
+
 def agno_python_tool_interface(instruction: str, agent_context_hint: Optional[str] = None) -> str:
+    """
+    This function is the integration point for your actual agno_python_tool.
+    It takes a natural language instruction from the LLM.
+    Your tool internally generates and executes Python code based on this instruction.
+    It MUST return a string observation that includes:
+    - Confirmation of the action taken.
+    - Any direct results (e.g., "Shape of data is (100,10).").
+    - CRUCIALLY: Clear references (e.g., filenames like 'cleaned_train_data_v1.pkl' or 
+      'price_distribution_plot.png', or unique IDs) for ANY data artifact, plot, or model object 
+      that was created or saved as a result of the instruction, IF THE LLM'S INSTRUCTION
+      ASKED FOR THE ARTIFACT TO BE SAVED AND ITS REFERENCE REPORTED.
+    - If a plot was generated and a description requested, the description should be part of this observation.
+    The LLM agent relies on these reported references and descriptions.
+    """
+    global SIMULATED_MODEL_PERFORMANCE_REGISTRY
     print(f"    [AGNO_PYTHON_TOOL INTERFACE] Sending Instruction to your tool:\n    '{instruction}'")
     if agent_context_hint:
         print(f"    Agent Context Hint (passed to your tool): {agent_context_hint}")
@@ -43,41 +88,69 @@ def agno_python_tool_interface(instruction: str, agent_context_hint: Optional[st
     sim_observation = f"Observation: PythonTool processed instruction: '{instruction}'. "
     instruction_lower = instruction.lower()
 
-    # ... (other simulation cases for EDA, FE) ...
-
-    # Modeling Related Simulations
-    if "load the untrained pipeline" in instruction_lower and "train it using x_train" in instruction_lower and "y_train" in instruction_lower:
-        # Extract refs for more specific simulation
-        untrained_pipe_ref_match = re.search(r"untrained pipeline from '([^']+)'", instruction_lower)
-        x_train_ref_match = re.search(r"x_train from '([^']+)'", instruction_lower)
-        y_train_ref_match = re.search(r"y_train from '([^']+)'", instruction_lower)
-        
-        untrained_pipe_ref = untrained_pipe_ref_match.group(1) if untrained_pipe_ref_match else "unknown_untrained_pipe.joblib"
-        x_train_ref = x_train_ref_match.group(1) if x_train_ref_match else "unknown_x_train.pkl"
-        y_train_ref = y_train_ref_match.group(1) if y_train_ref_match else "unknown_y_train.pkl"
-
-        sim_observation += (f"Untrained pipeline '{untrained_pipe_ref}' loaded. "
-                           f"X_train from '{x_train_ref}' and y_train from '{y_train_ref}' loaded. "
-                           f"Pipeline trained successfully. ")
-        if "save the trained pipeline as a .joblib file and report its reference" in instruction_lower:
-            sim_observation += "Trained pipeline saved by tool. Reference is 'trained_model_pipeline_final.joblib'."
+    # The LLM must explicitly ask the tool to "report the reference" or "report the filename"
+    # and "provide a description" for plots.
+    if "load the dataset from" in instruction_lower and "report its reference" in instruction_lower:
+        if "train_data.csv" in instruction:
+            sim_observation += "Dataset 'dummy_pipeline_data/train_data.csv' loaded. Tool reports its reference as 'train_df_loaded_ref.pkl'."
+        elif "val_data.csv" in instruction:
+            sim_observation += "Dataset 'dummy_pipeline_data/val_data.csv' loaded. Tool reports its reference as 'val_df_loaded_ref.pkl'."
+        elif "test_data.csv" in instruction:
+            sim_observation += "Dataset 'dummy_pipeline_data/test_data.csv' loaded. Tool reports its reference as 'test_df_loaded_ref.pkl'."
         else:
-            sim_observation += "Trained pipeline is ready but not explicitly saved in this step."
-    elif "load trained pipeline" in instruction_lower and "make predictions" in instruction_lower: # For Evaluation
-        sim_observation += "Trained pipeline and relevant data loaded. Predictions made."
-        if "calculate" in instruction_lower and "metrics" in instruction_lower:
-            if "classification" in agent_context_hint.lower() if agent_context_hint else "classification" in instruction_lower:
-                 sim_observation += " Metrics calculated by tool and reported as: {{'accuracy': 0.90, 'f1_score': 0.88}}."
-            else: # regression
-                 sim_observation += " Metrics calculated by tool and reported as: {{'mse': 12.3, 'r_squared': 0.81}}."
+            sim_observation += "Dataset loaded. Tool assigned generic reference '<generic_loaded_data_ref.pkl>'."
+    elif "identify the 'date' column" in instruction_lower and "parse it as datetime" in instruction_lower:
+        sim_observation += "Identified 'Date' column and parsed to datetime64[ns] using format YYYY-MM-DD. Confirmed."
+    elif "create a numeric-only version" in instruction_lower and "excluding the 'date' column" in instruction_lower and "report the new reference" in instruction_lower:
+        sim_observation += "Numeric-only version created (e.g., 'train_df_numeric_for_corr.pkl'). Original 'Date' column (datetime object) excluded."
+    elif "extract year, month, day, dayofweek from the 'date' column" in instruction_lower and "drop the original 'date' column" in instruction_lower and "report new data references" in instruction_lower:
+        sim_observation += "Date features (Year, Month, Day, DayOfWeek) extracted. Original 'Date' column dropped. New data references: 'train_with_date_features.pkl', 'val_with_date_features.pkl', 'test_with_date_features.pkl'."
+    elif "clean data referenced by" in instruction_lower and "report the new reference" in instruction_lower:
+        sim_observation += "Data cleaned. New reference reported by tool: 'cleaned_data_ref.pkl'."
+    elif "generate a histogram for" in instruction_lower and "save it, report the filename, and provide a textual description" in instruction_lower:
+        sim_observation += "Histogram generated. Plot saved as 'sim_histogram.png'. Description: [Simulated detailed description, e.g., 'The distribution is moderately right-skewed with a mean of X and median of Y.']."
+    elif "fit a standardscaler" in instruction_lower and "save it as a .joblib file and report its reference" in instruction_lower:
+        sim_observation += "StandardScaler fitted. Saved as 'fitted_scaler.joblib'. This is its reference."
+    elif "create an untrained scikit-learn pipeline using preprocessors" in instruction_lower and "estimator type" in instruction_lower and "save it as a .joblib file and report its reference" in instruction_lower:
+        model_type_match = re.search(r"estimator type '([^']+)'", instruction_lower)
+        model_type = model_type_match.group(1) if model_type_match else "UnknownModel"
+        config_idx_match = re.search(r"config_idx_(\d+)", instruction_lower) # If LLM includes for uniqueness in simulation
+        config_idx_str = config_idx_match.group(1) if config_idx_match else "0"
+        ref = f"untrained_pipeline_{model_type}_config{config_idx_str}.joblib"
+        sim_observation += f"Untrained Scikit-learn pipeline with preprocessors and {model_type} estimator created. Saved. Reference is '{ref}'."
+    elif "load the untrained pipeline" in instruction_lower and "train it using x_train" in instruction_lower:
+        untrained_pipe_ref = re.search(r"untrained pipeline '([^']+)'", instruction_lower).group(1) if re.search(r"untrained pipeline '([^']+)'", instruction_lower) else "unknown_pipe.joblib"
+        params_key = "default" # Simplified param simulation
+        if "n_estimators=200" in instruction_lower: params_key = "n200"
+        elif "n_estimators=50" in instruction_lower: params_key = "n50"
+        
+        model_type_sim = "DefaultModel"
+        if "randomforest" in untrained_pipe_ref: model_type_sim="RandomForest" 
+        elif "linearregression" in untrained_pipe_ref: model_type_sim="LinearRegression"
 
+        full_model_key = f"{model_type_sim}_{params_key}"
+        if full_model_key not in SIMULATED_MODEL_PERFORMANCE_REGISTRY: SIMULATED_MODEL_PERFORMANCE_REGISTRY[full_model_key] = random.uniform(0.6, 2.5) # Higher initial RMSE
+        else: SIMULATED_MODEL_PERFORMANCE_REGISTRY[full_model_key] *= random.uniform(0.85, 0.99) 
+        current_sim_rmse = SIMULATED_MODEL_PERFORMANCE_REGISTRY[full_model_key]
+        
+        trained_model_ref = f"trained_{untrained_pipe_ref.replace('untrained_', '')}"
+        sim_observation += (f"Pipeline '{untrained_pipe_ref}' trained. Trained pipeline saved. Reference is '{trained_model_ref}'.")
+        if "report rmse" in instruction_lower: sim_observation += f" Evaluation on validation set complete. Reported RMSE: {current_sim_rmse:.4f}."
+    elif "separate target" in instruction_lower and "report new references" in instruction_lower:
+        sim_observation += "Target separated. Tool reports new references: X_train='X_train_final.pkl', y_train='y_train_final.pkl', X_val='X_val_final.pkl', y_val='y_val_final.pkl', X_test='X_test_final.pkl'."
+    elif "calculate regression metrics" in instruction_lower: # For final evaluation
+        final_pipe_ref = re.search(r"pipeline '([^']+)'", instruction_lower).group(1) if re.search(r"pipeline '([^']+)'", instruction_lower) else "unknown_pipe.joblib"
+        final_sim_rmse = 0.45 # Simulate best RMSE for final eval
+        for key, val_rmse in SIMULATED_MODEL_PERFORMANCE_REGISTRY.items():
+            if key in final_pipe_ref: final_sim_rmse = val_rmse; break # Use if a key matches part of filename
+        sim_observation += f"Final evaluation using '{final_pipe_ref}'. Metrics reported by tool: {{'rmse': {final_sim_rmse:.4f}, 'mae': {final_sim_rmse*0.8:.4f}, 'r_squared': {max(0, 1 - final_sim_rmse / 2.0):.2f}}}." # Adjusted R2 sim
     else:
         sim_observation += "Task completed. If specific artifacts were requested to be saved and their references reported, those details are included above."
             
     print(f"    [AGNO_PYTHON_TOOL INTERFACE] Returning Observation:\n    '{sim_observation}'")
     return sim_observation
 
-# --- 3. Generic ReAct Loop Engine (Assumed to be defined as before) ---
+# --- 3. Generic ReAct Loop Engine ---
 llm = ChatOpenAI(model="gpt-4o", temperature=0.1) 
 
 def run_generic_react_loop(
@@ -119,7 +192,7 @@ def run_generic_react_loop(
                 final_answer_text = json.dumps({"error": f"Max iterations reached. Last AI thought: {ai_content}"})
     return final_answer_text
 
-# --- 4. Helper to Parse LLM's JSON Final Answer (Assumed to be defined as before) ---
+# --- 4. Helper to Parse LLM's JSON Final Answer ---
 def parse_llm_json_final_answer(final_answer_json_string: str, default_error_message: str = "Report generation failed.") -> Dict:
     try:
         if final_answer_json_string.startswith("```json"):
@@ -141,146 +214,304 @@ def parse_llm_json_final_answer(final_answer_json_string: str, default_error_mes
         print(f"    ERROR: Unexpected error parsing LLM's Final Answer: {e}")
         return {"error": f"Unexpected Parsing Error: {e}", "summary": default_error_message}
 
-# --- 5. Modeling Agent Node (Refined) ---
-def modeling_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
-    print("\n--- Modeling Agent Node Running (EDA-Informed Training) ---")
-    
-    # Inputs from previous stages
-    untrained_pipeline_ref = state.get("fe_untrained_full_pipeline_ref", "default_untrained_pipe.joblib")
-    x_train_ref = state.get("fe_X_train_ref", "default_X_train_fe.pkl") 
-    y_train_ref = state.get("fe_y_train_ref", "default_y_train_fe.pkl")
-    
-    # Information from FE about the model chosen based on EDA
-    selected_model_type_by_fe = state.get("fe_selected_model_type", "DefaultModel (e.g., RandomForest)")
-    initial_hyperparams_by_fe = state.get("fe_initial_hyperparameter_hints", {})
-    
-    # EDA's original model suggestions (for context, though FE already acted on them)
-    eda_model_suggestions = state.get("eda_model_suggestions", [])
+# --- 5. Define Agent Nodes ---
 
+def eda_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
+    print("\n--- EDA Agent Node Running (Explicit Date Handling & Comprehensive Report) ---")
+    data_paths = state["data_paths"]
+    target_col = state.get("target_column_name", "Target")
+    problem_type = state.get("problem_type", "regression") 
+    eda_tool_context_hint = f"Initial data paths: {json.dumps(data_paths)}. Target column: '{target_col}'. Problem type: {problem_type}. Task: EDA for stock price prediction."
 
-    model_tool_context_hint = (
-        f"Untrained Scikit-learn pipeline reference: '{untrained_pipeline_ref}' (this pipeline was constructed by FE and includes a '{selected_model_type_by_fe}' estimator based on EDA insights). "
-        f"X_train data reference for training: '{x_train_ref}'. "
-        f"y_train data reference for training: '{y_train_ref}'. "
-        f"Initial hyperparameter hints from FE (if any): {json.dumps(initial_hyperparams_by_fe)}. "
-        f"Original EDA model suggestions (for broader context): {json.dumps(eda_model_suggestions)}."
-    )
+    prompt_content = f"""You are an Expert EDA Data Scientist performing iterative research to create a comprehensive 'EDA Manual'.
+    The PythonTool you use accepts natural language instructions. It will report back references (FULL FILENAMES including extensions like .pkl for data, .png for plots) to any data it loads/creates and plots it saves.
+    When you instruct the PythonTool to generate a plot, you MUST ALSO instruct it to provide a textual description of the plot's key features (shape, trend, skewness, outliers, correlation strength) in its observation, along with the plot's reference/filename. Use these textual descriptions in your reasoning and summary.
+    You MUST instruct the tool to report references for ALL created/modified data and plots.
 
-    prompt_content = f"""You are a Modeling Specialist. Your PythonTool takes Natural Language instructions.
-    Context from Feature Engineering (which considered EDA suggestions):
-    - Untrained Full Scikit-learn Pipeline Reference: {untrained_pipeline_ref} 
-      (This pipeline includes preprocessing steps and an UNTRAINED '{selected_model_type_by_fe}' estimator.)
-    - X_train Reference (for training this pipeline): {x_train_ref}
-    - y_train Reference (for training this pipeline): {y_train_ref}
-    - Initial Hyperparameter Hints from FE (if any): {json.dumps(initial_hyperparams_by_fe) if initial_hyperparams_by_fe else 'Use estimator defaults.'}
-    - Broader EDA Model Suggestions (for your awareness): {json.dumps(eda_model_suggestions)}
+    Initial context for PythonTool: {eda_tool_context_hint}
 
-    Your Primary Task:
-    1. Instruct PythonTool to load the specific UNTRAINED pipeline from '{untrained_pipeline_ref}'.
-    2. Instruct PythonTool to load X_train from '{x_train_ref}' and y_train from '{y_train_ref}'.
-    3. Instruct PythonTool to train (fit) this loaded pipeline using X_train and y_train. 
-       If specific initial hyperparameter hints were provided ({json.dumps(initial_hyperparams_by_fe)}), instruct the tool to consider them if it's capable of setting parameters on the untrained estimator within the pipeline before fitting. Otherwise, default parameters will be used.
-    4. Instruct PythonTool to save the ENTIRE TRAINED PIPELINE as a .joblib file and report its exact reference (full filename including extension).
+    Your EDA Process (CRITICAL: Address 'Date' column with format 'YYYY-MM-DD' explicitly and EARLY):
+    1.  **Load Datasets:** Instruct tool to load train, val, test. Ask for initial references (e.g., 'initial_train_df.pkl').
+    2.  **Identify and Parse 'Date' Column:** Instruct tool: "For each loaded dataset reference (e.g., 'initial_train_df.pkl'), identify the 'Date' column. Parse it as datetime objects using format 'YYYY-MM-DD'. Confirm parsing and report the new dtype for 'Date' column in each."
+    3.  **Initial Structure & Quality:** Using these date-parsed references, check shapes, dtypes (confirm 'Date' is datetime), head/tail, missing values, outliers (request plot refs & descriptions for '{target_col}', 'Price', 'Volume').
+    4.  **Prepare for Numeric Analysis (IMPORTANT):** Before numeric operations like correlation:
+        Instruct tool: "For data referenced by 'initial_train_df.pkl' (with parsed 'Date'), create a TEMPORARY numeric-only version FOR CORRELATION ANALYSIS. This version MUST EXCLUDE the original 'Date' column (datetime object) and any other non-numeric columns (except the target '{target_col}' if numeric). Report the NEW reference for this temporary numeric-ready dataset (e.g., 'train_df_numeric_for_corr.pkl')."
+    5.  **Numerical EDA (Correlations):** Using the NEW numeric-ready references (e.g., 'train_df_numeric_for_corr.pkl'), compute correlations. Ask for plot ref & description for heatmap.
+    6.  **Distribution & Time Series Analysis:** Using main data references (e.g., 'initial_train_df.pkl' with parsed dates), analyze distributions of '{target_col}', 'Price', 'Volume'. Plot '{target_col}' over the parsed 'Date' column. Ask for plot refs & descriptions.
+    7.  **Data Cleaning (if needed):** If cleaning (imputation, etc.) is performed on main data references, instruct tool to save these cleaned datasets and report their FINAL references (e.g., 'cleaned_train_final_eda.pkl'). These are the refs FE will use.
+    8.  **Model & FE Suggestions:** Based on all findings (including date patterns, and the problem type: {problem_type}), provide regression model suggestions and specific FE suggestions. For dates, explicitly suggest: "FE Suggestion: From the parsed 'Date' column in 'cleaned_train_final_eda.pkl' (and val/test), extract numerical features like Year, Month, Day, DayOfWeek. After extraction, the original 'Date' (datetime object) column MUST BE DROPPED from the feature set before modeling."
+    9.  Conclude with your comprehensive report.
 
-    ReAct Format:
-    Thought: (Optional) Your reasoning.
-    Action: Python
-    Action Input: <Natural language instruction for PythonTool>
-    (System will provide Observation:)
-    Observation: <result from PythonTool>
-
+    ReAct Format: Action: Python, Action Input: <NL instruction>.
     "Final Answer:" MUST be a single well-formed JSON object string, enclosed in ```json ... ```.
-    The JSON object MUST have these top-level keys:
-    "model_training_summary": (string) Summary of the training process, confirming the model type trained (should be '{selected_model_type_by_fe}') and any specific parameters used or observations from training.
-    "trained_pipeline_ref": (string) "<tool_reported_TRAINED_pipeline_ref.joblib>"
-    
-    Begin. Focus on training the pipeline referenced by '{untrained_pipeline_ref}'.
+    (JSON structure as defined in previous version - "eda_summary", "data_profile", "data_quality_report", "target_variable_analysis", "key_feature_insights", "model_suggestions", "fe_suggestions", "artifact_catalog" with "plots")
+    The "artifact_catalog" MUST contain tool-reported references for all final processed data and key plots.
+    Begin.
     """
-    final_answer_json_string = run_generic_react_loop(
-        prompt_content,
-        state.get("max_react_iterations", 5), # Training is usually a few direct steps
-        model_tool_context_hint
-    )
+    final_answer_json_string = run_generic_react_loop(prompt_content, state.get("max_react_iterations", 20), eda_tool_context_hint)
     
-    parsed_data = parse_llm_json_final_answer(final_answer_json_string, "Modeling report generation failed.")
-
+    eda_report_output = parse_llm_json_final_answer(final_answer_json_string, "EDA report generation failed.")
+    
+    artifact_refs = eda_report_output.get("artifact_catalog", {}) # Corrected key
+    
     return {
-        "current_stage_completed": "Modeling",
-        "model_training_summary": parsed_data.get("model_training_summary", "Training summary not parsed."),
-        "model_trained_pipeline_ref": parsed_data.get("trained_pipeline_ref", "default_trained_pipeline.joblib") 
+        "current_stage_completed": "EDA", 
+        "eda_report": eda_report_output,
+        "eda_model_suggestions": eda_report_output.get("model_suggestions", []), 
+        "eda_fe_suggestions": eda_report_output.get("fe_suggestions", []),
+        "eda_processed_train_ref": artifact_refs.get("final_processed_train_data"), # Ensure key match
+        "eda_processed_val_ref": artifact_refs.get("final_processed_val_data"),
+        "eda_processed_test_ref": artifact_refs.get("final_processed_test_data"),
+        "eda_plot_references": artifact_refs.get("plots", {})
     }
 
-# --- Other Agent Nodes (EDA, FE, Evaluation) and Workflow Setup would be here ---
-# For brevity, I'm only showing the modified modeling_agent_node and necessary context.
-# The full pipeline code would include all nodes and the graph definition.
+def feature_engineering_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
+    print("\n--- Feature Engineering Agent Node Running (Strict Date Handling) ---")
+    eda_report = state.get("eda_report", {}) 
+    train_ref_from_eda = eda_report.get("artifact_catalog", {}).get("final_processed_train_data", "train_eda.pkl") # Corrected key
+    val_ref_from_eda = eda_report.get("artifact_catalog", {}).get("final_processed_val_data", "val_eda.pkl")
+    test_ref_from_eda = eda_report.get("artifact_catalog", {}).get("final_processed_test_data", "test_eda.pkl")
+    suggestions_from_eda = eda_report.get("fe_suggestions", [])
+    target_col = state.get("target_column_name", "Target")
 
-# Example of how it would fit into the full pipeline (assuming other nodes are defined)
-if __name__ == "__main__":
-    # This is a conceptual execution. You'd need the full pipeline code.
-    print("Demonstrating the refined modeling_agent_node concept.")
+    date_fe_suggestion_from_eda = "Ensure date features are extracted and original 'Date' column is dropped if EDA suggested it."
+    for suggestion in suggestions_from_eda:
+        if "date column" in suggestion.lower() and "extract" in suggestion.lower() and "drop" in suggestion.lower():
+            date_fe_suggestion_from_eda = suggestion; break
 
-    # Dummy state that would be built by previous EDA and FE nodes
-    # In a real run, these values come from the actual execution of eda_agent_node and feature_engineering_agent_node
-    dummy_state_after_fe = MultiAgentPipelineState(
-        data_paths={"train": "dummy/train.csv", "val": "dummy/val.csv", "test": "dummy/test.csv"},
-        target_column_name="Target",
-        problem_type="regression",
-        eda_report={ # Simplified EDA report
-            "comprehensive_summary": "EDA found linear trends and some skewness.",
-            "model_suggestions": ["Consider LinearRegression due to trends.", "Try RandomForestRegressor for non-linearities."],
-            "fe_suggestions": ["Log transform 'Price'.", "Create day-of-week features."],
-            "artifact_references": {
-                "processed_train_data": "eda_cleaned_train.pkl",
-                "processed_val_data": "eda_cleaned_val.pkl",
-                "processed_test_data": "eda_cleaned_test.pkl",
-            }
-        },
-        eda_model_suggestions=["Consider LinearRegression due to trends.", "Try RandomForestRegressor for non-linearities."], # Explicitly in state
-        fe_X_train_ref="fe_X_train.pkl",
-        fe_y_train_ref="fe_y_train.pkl",
-        fe_untrained_full_pipeline_ref="fe_untrained_pipeline_rfr.joblib", # FE decided on RFR
-        fe_selected_model_type="RandomForestRegressor",
-        fe_initial_hyperparameter_hints={"n_estimators": 150, "max_depth": 10},
-        max_react_iterations=5
-        # ... other fields would be None or populated
-    )
+    fe_tool_context_hint = (f"Input data refs from EDA: train='{train_ref_from_eda}', val='{val_ref_from_eda}', test='{test_ref_from_eda}'. "
+                            f"Target: '{target_col}'. EDA FE Suggestions: {json.dumps(suggestions_from_eda)}.")
 
-    print(f"\n--- Calling modeling_agent_node with dummy state from FE ---")
-    modeling_output = modeling_agent_node(dummy_state_after_fe)
+    prompt_content = f"""You are a Feature Engineering Specialist for stock price prediction. PythonTool takes NL instructions.
+    Context from EDA:
+    - Input Train Data Ref: {train_ref_from_eda} (tool to use as 'current_train_df')
+    - Input Val Data Ref: {val_ref_from_eda} (as 'current_val_df')
+    - Input Test Data Ref: {test_ref_from_eda} (as 'current_test_df')
+    - EDA FE Suggestions: {json.dumps(suggestions_from_eda)}
+    - Specific EDA suggestion for 'Date' column (PRIORITIZE THIS): "{date_fe_suggestion_from_eda}"
+    - Target Column: '{target_col}'
+
+    Your tasks:
+    1. Instruct tool to use/load datasets using EDA references.
+    2. **CRITICAL FIRST STEP for Date Handling:** Implement the EDA suggestion for the 'Date' column: "{date_fe_suggestion_from_eda}". This means instructing tool to extract numerical date features AND THEN DROP THE ORIGINAL 'Date' (datetime object) COLUMN from train, val, and test. Tool must report new data references.
+    3. Implement other FE steps from EDA suggestions (transformations, imputation). Apply consistently.
+    4. Create and SAVE individual FITTED transformers (scalers, encoders for categoricals like 'Category', imputers) as .joblib files using training data. Ask tool to report full filename references.
+    5. After ALL transformations, separate features (X) and target ('{target_col}'). Ask tool to report references for X_train, y_train, X_val, y_val, X_test (e.g., 'X_train_fe_final.pkl') and the final feature list (this list MUST NOT contain the original 'Date' column).
+
+    ReAct Format: Action: Python, Action Input: <NL instruction>.
+    "Final Answer:" MUST be a single well-formed JSON object string, enclosed in ```json ... ```.
+    JSON keys: "fe_summary", "final_feature_list", 
+               "transformer_references": {{ "scaler_price": "<ref.joblib>", "encoder_category": "<ref.joblib>" }}, 
+               "data_references": {{ "X_train": "<X_train_ref.pkl>", ... }}
+    Begin. Address date feature engineering first.
+    """
+    final_answer_json_string = run_generic_react_loop(prompt_content, state.get("max_react_iterations", 12), fe_tool_context_hint)
+    parsed_data = parse_llm_json_final_answer(final_answer_json_string, "FE report generation failed.")
+    data_refs = parsed_data.get("data_references", {})
+
+    return {
+        "current_stage_completed": "FeatureEngineering",
+        "fe_applied_steps_summary": parsed_data.get("fe_summary", "FE Summary not parsed."),
+        "fe_final_feature_list": parsed_data.get("final_feature_list", []),
+        "fe_transformer_references": parsed_data.get("transformer_references", {}),
+        "fe_custom_transformer_module": parsed_data.get("custom_transformer_module"), 
+        "fe_X_train_ref": data_refs.get("X_train", "default_X_train_fe.pkl"),
+        "fe_y_train_ref": data_refs.get("y_train", "default_y_train_fe.pkl"),
+        "fe_X_val_ref": data_refs.get("X_val", "default_X_val_fe.pkl"),
+        "fe_y_val_ref": data_refs.get("y_val", "default_y_val_fe.pkl"),
+        "fe_X_test_ref": data_refs.get("X_test", "default_X_test_fe.pkl"),
+        "fe_y_test_ref": data_refs.get("y_test") 
+    }
+
+def model_selection_decision_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
+    print("\n--- Model Selection Decision Agent Node Running ---")
+    eda_report = state.get("eda_report", {}); 
+    eda_model_suggestions = eda_report.get("model_suggestions", [])
+    fe_final_feature_list = state.get("fe_final_feature_list", [])
+    problem_type = state.get("problem_type", "regression") 
     
-    print("\n--- Output from modeling_agent_node ---")
-    print(json.dumps(modeling_output, indent=2))
+    decision_tool_context_hint = (f"EDA Model Suggestions: {json.dumps(eda_model_suggestions)}. "
+                                  f"Final Features from FE ({len(fe_final_feature_list)} features): {json.dumps(fe_final_feature_list[:5])}... " 
+                                  f"Problem type: {problem_type}.")
 
-    # Expected output would show a model_training_summary and a model_trained_pipeline_ref
-    # based on the simulated agno_python_tool_interface responses to training instructions.
-```
+    prompt_content = f"""You are a Model Selection Strategist for predicting stock prices (a regression task).
+    Context: {decision_tool_context_hint}
+    Your Task: Based on EDA model suggestions and final features, select up to 2-3 promising Scikit-learn REGRESSION model types. For each, suggest initial hyperparameters or defaults.
+    "Final Answer:" JSON keys: "decision_rationale", "top_model_configurations": [ {{ "model_type": "e.g.RandomForestRegressor", "initial_hyperparameters": {{}}, "reasoning": "..." }} ]. Begin."""
+    final_answer_json_string = run_generic_react_loop(prompt_content, 3, decision_tool_context_hint) 
+    parsed_data = parse_llm_json_final_answer(final_answer_json_string, "Model selection decision failed.")
+    top_configs = parsed_data.get("top_model_configurations", [])
+    return {"current_stage_completed": "ModelSelectionDecision", "top_model_configurations": top_configs}
 
-**Key Changes in this `modeling_agent_node`:**
 
-1.  **Input from State:** It now explicitly pulls:
-    * `fe_untrained_full_pipeline_ref`: The reference to the Scikit-learn pipeline object (preprocessors + untrained estimator) that the FE agent created.
-    * `fe_selected_model_type`: The type of model estimator that the FE agent decided to include in that pipeline (this decision by FE was guided by `eda_model_suggestions`).
-    * `fe_initial_hyperparameter_hints`: Any basic hyperparameter ideas from FE.
-    * `eda_model_suggestions`: The original list of model suggestions from EDA is passed into the prompt for broader context, even if FE has already made a primary selection.
-2.  **Prompt Refinement:**
-    * The system prompt for the `modeling_agent_node` now clearly states that it should work with the specific `untrained_full_pipeline_ref` provided by the FE stage.
-    * It instructs the LLM to consider the `initial_hyperparameter_hints` if the `agno_python_tool` can handle setting parameters on the untrained estimator within the pipeline before fitting.
-    * The primary goal is to train *this specific pipeline* that FE has already thoughtfully constructed based on EDA.
-3.  **Focus on Execution:** The "intelligence" of model *selection* has largely been pushed to the FE agent (which uses EDA's suggestions). The Modeling agent is now more focused on the robust *execution* of training for that chosen pipeline structure.
-4.  **"Trying few things" (Implicitly Handled by FE):**
-    * If the EDA suggested multiple good model candidates (e.g., "try Linear Regression and also a RandomForest"), the FE agent's prompt could be designed to make a choice or even (in a more complex FE agent) instruct the tool to prepare *two different* untrained pipeline references, one for each model type.
-    * The Modeling agent could then be called twice (or have a loop) to train each, but for "keeping it simple" in this iteration, the FE agent makes one primary choice for the `untrained_full_pipeline_ref`.
-    * The current `modeling_agent_node` prompt doesn't ask the LLM to try alternative models *from scratch* within its own ReAct loop if FE already provided a specific pipeline. It focuses on the pipeline given.
+def modeling_agent_node(state: MultiAgentPipelineState) -> Dict[str, any]:
+    print("\n--- Modeling Agent Node Running (Iterates Top Configurations for RMSE) ---")
+    top_model_configurations = state.get("top_model_configurations", [])
+    transformer_refs_from_fe = state.get("fe_transformer_references", {})
+    x_train_ref = state.get("fe_X_train_ref"); y_train_ref = state.get("fe_y_train_ref")
+    x_val_ref = state.get("fe_X_val_ref"); y_val_ref = state.get("fe_y_val_ref") 
+    custom_module = state.get("fe_custom_transformer_module")
+    target_rmse = state.get("target_rmse", 0.002) 
+    config_idx = state.get("modeling_config_index", 0) 
+    overall_best_rmse = state.get("best_rmse_so_far", float('inf'))
+    overall_best_model_ref = state.get("best_model_ref_so_far"); overall_best_model_config = state.get("best_model_config_so_far")
+    strategy_log_for_all_configs = state.get("modeling_strategy_log", [])
+    max_configs_to_try = state.get("max_modeling_configs_to_try", len(top_model_configurations))
 
-**To make it even more "intelligent" regarding trying a few things in the Modeling Node (more complex):**
+    if not top_model_configurations or config_idx >= len(top_model_configurations) or config_idx >= max_configs_to_try:
+        summary_msg = f"Completed trying {config_idx} model configurations. Best RMSE: {overall_best_rmse:.4f}."
+        return {"current_stage_completed": "Modeling", "model_training_summary": summary_msg, "model_trained_pipeline_ref": overall_best_model_ref, "best_rmse_so_far": overall_best_rmse, "best_model_ref_so_far": overall_best_model_ref, "best_model_config_so_far": overall_best_model_config, "modeling_strategy_log": strategy_log_for_all_configs, "modeling_config_index": config_idx }
 
-If you wanted the `modeling_agent_node` itself to try, say, two different models based on EDA suggestions, you would:
-1.  Pass the `eda_model_suggestions` more directly to the Modeling agent's prompt.
-2.  The prompt would instruct the LLM: "Based on these suggestions (e.g., `['LinearRegression', 'RandomForestRegressor']`), instruct the PythonTool to:
-    a.  Create and train a pipeline with LinearRegression (using preprocessors from FE if available separately, or by building a new preproc section). Save and report its reference and metrics.
-    b.  Create and train a pipeline with RandomForestRegressor. Save and report its reference and metrics.
-    c.  Compare the (simulated or tool-reported) metrics.
-    d.  In your Final Answer, report the reference of the *best performing* trained pipeline as `trained_pipeline_ref` and summarize why."
-This would make the `modeling_agent_node`'s ReAct loop longer and require your `agno_python_tool` to be very robust in handling these sequential model building/training/evaluation tasks and reporting distinct references.
+    current_config = top_model_configurations[config_idx]; chosen_model_type = current_config.get("model_type", "RandomForestRegressor"); initial_hyperparams = current_config.get("initial_hyperparameters", {})
+    model_tool_context_hint = (f"Config (Idx {config_idx}): Type='{chosen_model_type}', Params='{json.dumps(initial_hyperparams)}'. Transformers: {json.dumps(transformer_refs_from_fe)}. Custom module: '{custom_module}'. Data: X_train='{x_train_ref}', etc. Target RMSE: {target_rmse}.")
+    prompt_content = f"""You are a Modeling Specialist, trying one model configuration for stock price prediction. PythonTool takes NL instructions. Context: {model_tool_context_hint}
+    Task for THIS Configuration (Type: '{chosen_model_type}', Params: {json.dumps(initial_hyperparams)}):
+    1. Instruct PythonTool to:
+        a. Create UNTRAINED Scikit-learn pipeline: combine preprocessors from '{json.dumps(transformer_refs_from_fe)}' with estimator '{chosen_model_type}' using params '{json.dumps(initial_hyperparams)}'. (Ensure custom_module '{custom_module}' is usable if specified).
+        b. Save this UNTRAINED pipeline (e.g., 'untrained_config{config_idx}.joblib') & report ref.
+        c. Load X_train, y_train. Train pipeline.
+        d. Save TRAINED pipeline (e.g., 'trained_config{config_idx}.joblib') & report ref.
+        e. Load X_val, y_val. Predict & calculate RMSE. Report RMSE.
+    "Final Answer:" JSON for THIS trial: "config_trial_summary", "config_trained_pipeline_ref", "config_rmse", "model_type_tried", "hyperparameters_tried". Begin."""
+    config_trial_final_answer_json = run_generic_react_loop(prompt_content, state.get("max_react_iterations", 7), model_tool_context_hint)
+    parsed_config_trial_data = parse_llm_json_final_answer(config_trial_final_answer_json, f"Modeling config trial {config_idx} failed.")
+    config_rmse = parsed_config_trial_data.get("config_rmse"); config_model_ref = parsed_config_trial_data.get("config_trained_pipeline_ref")
+    new_best_rmse, new_best_model_ref, new_best_model_config = overall_best_rmse, overall_best_model_ref, overall_best_model_config
+    if config_rmse is not None and config_rmse < overall_best_rmse: new_best_rmse, new_best_model_ref, new_best_model_config = config_rmse, config_model_ref, current_config
+    return {"modeling_config_index": config_idx + 1, "current_rmse": config_rmse, "best_rmse_so_far": new_best_rmse, "best_model_ref_so_far": new_best_model_ref, "best_model_config_so_far": new_best_model_config, "model_training_summary": parsed_config_trial_data.get("config_trial_summary"), "model_trained_pipeline_ref": config_model_ref, "modeling_strategy_log": strategy_log_for_all_configs + [f"ConfigIdx{config_idx}({chosen_model_type}): RMSE={config_rmse}"], "current_stage_completed": "Modeling_Config_Trial" }
 
-For now, the provided code makes the FE agent the primary decision-maker for the initial model architecture in the pipeline, informed by E
+
+def evaluation_node(state: MultiAgentPipelineState) -> Dict[str, any]:
+    print("\n--- Evaluation Agent Node Running ---")
+    trained_pipeline_ref = state.get("best_model_ref_so_far", state.get("model_trained_pipeline_ref", "default_best_trained.joblib"))
+    x_val_ref = state.get("fe_X_val_ref"); y_val_ref = state.get("fe_y_val_ref"); x_test_ref = state.get("fe_X_test_ref") 
+    problem_type = state.get("problem_type"); custom_transformer_module = state.get("fe_custom_transformer_module") 
+    best_model_config_info = state.get("best_model_config_so_far", {})
+    eval_tool_context_hint = (f"Trained pipeline ref (best from tuning): '{trained_pipeline_ref}'. Config: {json.dumps(best_model_config_info)}. Val X: '{x_val_ref}', Val y: '{y_val_ref}'. Test X: '{x_test_ref if x_test_ref else 'N/A'}'. Problem: {problem_type}.")
+    if custom_transformer_module: eval_tool_context_hint += f" Custom transformer module: '{custom_transformer_module}'."
+    metrics_to_request = "MSE, RMSE, MAE, R-squared" # Explicitly regression
+    prompt_content = f"""You are an Evaluation Specialist for a stock price prediction model. PythonTool takes NL instructions. Context: {eval_tool_context_hint}
+    Tasks: Load trained pipeline '{trained_pipeline_ref}'. Load val data. Predict on X_val. Calculate metrics: {metrics_to_request}. Report as dict string. (Optional) Predict on X_test.
+    "Final Answer:" JSON keys: "evaluation_summary", "validation_metrics": {{metric:value}}, "test_set_prediction_status". Begin."""
+    final_answer_json_string = run_generic_react_loop(prompt_content, state.get("max_react_iterations", 5), eval_tool_context_hint)
+    parsed_data = parse_llm_json_final_answer(final_answer_json_string, "Evaluation report failed.")
+    metrics_val = parsed_data.get("validation_metrics", {}); metrics = {}
+    if isinstance(metrics_val, str): 
+        try: metrics_str_cleaned = re.sub(r"^[^\(\{]*", "", metrics_val); metrics = json.loads(metrics_str_cleaned.replace("'", "\"")) if metrics_str_cleaned else {"error":"empty"}
+        except: metrics = {"error": f"failed to parse metrics string: {metrics_val}"}
+    else: metrics = metrics_val if isinstance(metrics_val, dict) else {}
+    return {"current_stage_completed": "Evaluation", "evaluation_summary": parsed_data.get("evaluation_summary"), "evaluation_metrics": metrics, "test_set_prediction_status": parsed_data.get("test_set_prediction_status"), "model_trained_pipeline_ref": trained_pipeline_ref }
+
+
+# --- 6. Graph Definition with Modeling Loop based on Configurations ---
+def modeling_iteration_decision(state: MultiAgentPipelineState):
+    print("\n--- Checking Modeling Iteration Decision ---")
+    config_idx = state.get("modeling_config_index", 0)
+    top_configurations = state.get("top_model_configurations", [])
+    max_configs_to_try = state.get("max_modeling_configs_to_try", len(top_configurations) if top_configurations else 0) 
+    current_best_rmse = state.get("best_rmse_so_far", float('inf'))
+    target_rmse = state.get("target_rmse", 0.002)
+    print(f"  Config Idx to try: {config_idx} / Total Configs Provided: {len(top_configurations)} (Max to try: {max_configs_to_try}). Best RMSE: {current_best_rmse}, Target: {target_rmse}")
+    if current_best_rmse <= target_rmse: print(f"  Target RMSE achieved. Evaluating."); return "evaluation_agent"
+    if not top_configurations: print("  No model configs. Evaluating."); return "evaluation_agent" # Should ideally not happen if decision node provides some
+    if config_idx < len(top_configurations) and config_idx < max_configs_to_try: print(f"  Proceeding to try model configuration at index {config_idx}."); return "modeling_agent"
+    else: print(f"  All model configs tried or limit reached. Evaluating."); return "evaluation_agent"
+
+workflow = StateGraph(MultiAgentPipelineState)
+workflow.add_node("eda_agent", eda_agent_node) 
+workflow.add_node("feature_engineering_agent", feature_engineering_agent_node)
+workflow.add_node("model_selection_decision_agent", model_selection_decision_agent_node) 
+workflow.add_node("modeling_agent", modeling_agent_node) 
+workflow.add_node("evaluation_agent", evaluation_node) 
+
+workflow.set_entry_point("eda_agent")
+workflow.add_edge("eda_agent", "feature_engineering_agent")
+workflow.add_edge("feature_engineering_agent", "model_selection_decision_agent") 
+workflow.add_edge("model_selection_decision_agent", "modeling_agent") 
+workflow.add_conditional_edges("modeling_agent", modeling_iteration_decision, { "modeling_agent": "modeling_agent", "evaluation_agent": "evaluation_agent" })
+workflow.add_edge("evaluation_agent", END)
+
+# To enable persistence (optional):
+# memory = SqliteSaver.from_conn_string(":memory:") # Or a file path
+# pipeline_app = workflow.compile(checkpointer=memory)
+pipeline_app = workflow.compile()
+
+
+# --- 7. Example Invocation ---
+if __name__ == "__main__":
+    print("Starting ML Pipeline with Explicit Date Handling, Decision Node & Iterative Modeling...")
+
+    os.makedirs("dummy_pipeline_data", exist_ok=True)
+    initial_data_paths = { "train": "dummy_pipeline_data/train_data.csv", "val": "dummy_pipeline_data/val_data.csv", "test": "dummy_pipeline_data/test_data.csv"}
+    dummy_header = "Date,Price,Volume,FeatureA,FeatureB,Category,CustomText,Target\n" 
+    # Ensure dummy dates match YYYY-MM-DD format
+    dummy_row_template = "{date_val},{price},{volume},{fA},{fB},{cat},{text},{target}\n"
+    for k, v_path in initial_data_paths.items():
+        with open(v_path, "w") as f: f.write(dummy_header)
+        for i in range(10): 
+            year_str, month_str, day_str = "2023", f"{((i//30)%12)+1:02d}", f"{(i%28)+1:02d}" # Make varied dates
+            date_val = f"{year_str}-{month_str}-{day_str}"
+            f.write(dummy_row_template.format(date_val=date_val, price=100+i*random.uniform(-2,2) + (i*0.5), volume=10000+i*100 + random.randint(-500,500), 
+                                             fA=0.5+i*0.01, fB=1.2-i*0.01, cat='TypeA' if i%3==0 else ('TypeB' if i%3==1 else 'TypeC'), 
+                                             text=f"Txt{i}", target= (101+i*0.25 + random.uniform(-1,1)))) # Regression target
+
+    initial_pipeline_state = {
+        "data_paths": initial_data_paths,
+        "target_column_name": "Target", 
+        "problem_type": "regression",   
+        "max_react_iterations": 6, # Max ReAct steps within each agent's single decision/action turn
+        "target_rmse": 0.75,       # Target RMSE for tuning loop (adjusted for dummy data)
+        "max_modeling_configs_to_try": 2, # How many of the Decision Node's suggestions to try
+        "modeling_config_index": 0,     # Initial value for modeling loop over configurations
+        "best_rmse_so_far": float('inf'), # Initial value
+    }
+
+    # To start from a specific node, you would manually construct initial_pipeline_state 
+    # to include all outputs that would have been produced by preceding nodes.
+    # For example, to start from 'model_selection_decision_agent':
+    # initial_pipeline_state = {
+    #     "data_paths": initial_data_paths, "target_column_name": "Target", "problem_type": "regression",
+    #     "max_react_iterations": 5, "target_rmse": 0.5, "max_modeling_configs_to_try": 2,
+    #     "modeling_config_index": 0, "best_rmse_so_far": float('inf'),
+    #     "current_stage_completed": "FeatureEngineering", # Mark previous stage as done
+    #     "eda_report": { # Populate with what EDA would have outputted
+    #         "model_suggestions": ["RandomForestRegressor", "LinearRegression"], 
+    #         # ... other necessary EDA outputs ...
+    #     },
+    #     "fe_final_feature_list": ["Price_log", "Volume_scaled", "Year", "Month"],
+    #     "fe_X_train_ref": "dummy_X_train.pkl", # Actual refs to pre-prepared data
+    #     "fe_y_train_ref": "dummy_y_train.pkl",
+    #     "fe_X_val_ref": "dummy_X_val.pkl",
+    #     "fe_y_val_ref": "dummy_y_val.pkl",
+    #     "fe_X_test_ref": "dummy_X_test.pkl",
+    #     "fe_transformer_references": {"scaler_price": "dummy_scaler.joblib"}
+    # }
+    # Then you'd set the entry point of the graph differently or modify how `invoke` or `stream` is called
+    # if LangGraph's checkpointer isn't being used for full resumption. The simplest for simulation
+    # is to ensure the initial state has all data needed by the desired start node.
+
+
+    config = {"configurable": {"thread_id": "ml_pipeline_robust_v002"}}
+
+    print("\nInvoking pipeline stream:")
+    final_state_accumulator = {} 
+
+    for chunk in pipeline_app.stream(initial_pipeline_state, config=config, stream_mode="updates"):
+        for node_name_in_chunk, node_output_dict in chunk.items(): 
+            print(f"\n<<< Update from Node: {node_name_in_chunk} >>>")
+            if isinstance(node_output_dict, dict):
+                final_state_accumulator.update(node_output_dict) 
+                for k_item, v_item in node_output_dict.items(): 
+                    print(f"  {k_item}: {str(v_item)[:350]}...")
+            else:
+                print(f"  Unexpected output format from node {node_name_in_chunk}: {str(node_output_dict)[:350]}...")
+
+    print("\n\n--- Final Pipeline State (from accumulated stream) ---")
+    if final_state_accumulator:
+        print(json.dumps(final_state_accumulator, indent=2, default=str))
+    
+    for v_path in initial_data_paths.values():
+        if os.path.exists(v_path): os.remove(v_path)
+    if os.path.exists("dummy_pipeline_data"): os.rmdir("dummy_pipeline_data")
+
+    print("\nMulti-Agent Pipeline Finished.")
