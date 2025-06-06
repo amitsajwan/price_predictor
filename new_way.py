@@ -4,9 +4,9 @@ import json
 import random
 from typing import List, Dict, Optional, Literal, Any
 
-from langchain import hub
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain.tools import tool
+from langchain_core.prompts import ChatPromptTemplate
 # Correctly import AzureChatOpenAI
 from langchain_openai import AzureChatOpenAI
 from pydantic import BaseModel, Field
@@ -102,10 +102,31 @@ llm = AzureChatOpenAI(
 
 tools = [python_data_science_tool]
 
-# Pull a standard, robust ReAct prompt from the LangChain hub.
-prompt = hub.pull("hwchase17/react")
+# The full text of the 'hwchase17/react' prompt template
+react_prompt_text = """Answer the following questions as best you can. You have access to the following tools:
 
-# Create the agent.
+{tools}
+
+Use the following format:
+
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+Begin!
+
+Question: {input}
+Thought:{agent_scratchpad}"""
+
+# Create the prompt OBJECT from the string to avoid errors
+prompt = ChatPromptTemplate.from_template(react_prompt_text)
+
+# Create the agent. This binds the LLM, the prompt, and the tools together.
 react_agent = create_react_agent(llm, tools, prompt)
 
 # Create the AgentExecutor.
