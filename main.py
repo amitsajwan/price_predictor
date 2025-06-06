@@ -243,7 +243,7 @@ def modeling_agent_node(state: MultiAgentPipelineState) -> Dict:
     Tasks:
     1. Create an untrained Scikit-learn pipeline (ColumnTransformer + estimator).
     2. Train the entire pipeline.
-    3. Save the trained pipeline and report its reference.
+    3. Save the TRAINED pipeline and report its new reference.
     4. Evaluate on validation data and report the RMSE.
 
     Your Final Answer must be a JSON object with keys: "config_trial_summary", "config_trained_pipeline_ref", and "config_rmse".
@@ -272,7 +272,7 @@ def evaluation_node(state: MultiAgentPipelineState) -> Dict:
     Perform a final evaluation of the best model.
     - Best Trained Pipeline Reference: '{state.modeling.best_model_ref_so_far}'
     - Test Data Reference: '{state.feature_engineering.X_test_ref}'
-    Task: Load the pipeline, predict on the test set, and calculate final metrics (RMSE, R-squared).
+    Task: Load the pipeline, predict on the test set, and calculate final performance metrics (RMSE, R-squared).
 
     Your Final Answer must be a JSON with keys: "evaluation_summary" and "final_metrics": {{"rmse": 0.123, ...}}.
     """
