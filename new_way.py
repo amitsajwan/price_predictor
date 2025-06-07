@@ -1,4 +1,4 @@
-# langgraph_eda_pipeline.py
+# langgraph_eda_pipeline.py (extended with FE and Modeling)
 
 import os
 import pandas as pd
@@ -24,7 +24,7 @@ output_files = {
 
 # --- LangGraph State Definition ---
 class EDAState(TypedDict):
-    status: Literal["start", "eda_complete"]
+    status: Literal["start", "eda_complete", "fe_complete", "model_complete"]
     summary: str
 
 # --- Tool to run Python code across all DataFrames ---
@@ -68,7 +68,7 @@ llm = AzureChatOpenAI(
 
 agent = create_tool_calling_agent(llm, [python_tool])
 
-# --- LangGraph Node: EDA Runner ---
+# --- LangGraph Nodes ---
 def run_eda(state: EDAState) -> EDAState:
     print("\n🔍 Running EDA Agent on all 3 files...")
     input_text = (
@@ -81,11 +81,41 @@ def run_eda(state: EDAState) -> EDAState:
     result = agent.invoke({"input": input_text})
     return {"status": "eda_complete", "summary": result["output"]}
 
+def run_fe(state: EDAState) -> EDAState:
+    print("\n🛠️ Running Feature Engineering...")
+    input_text = (
+        "Create useful features from df_clean, df_val, df_test:\n"
+        "- Add lag features, rolling means, pct changes\n"
+        "- Avoid leakage, keep output same size\n"
+        "- Save new versions to same eda_* files\n"
+        "- Summarize features added"
+    )
+    result = agent.invoke({"input": input_text})
+    return {"status": "fe_complete", "summary": state["summary"] + "\n\n" + result["output"]}
+
+def run_modeling(state: EDAState) -> EDAState:
+    print("\n🤖 Running Modeling...")
+    input_text = (
+        "Train regression model on df_clean to predict target (e.g., 'close')\n"
+        "- Use features generated\n"
+        "- Evaluate on df_val and df_test\n"
+        "- Show RMSE, R2, summary\n"
+        "- Don't do plots"
+    )
+    result = agent.invoke({"input": input_text})
+    return {"status": "model_complete", "summary": state["summary"] + "\n\n" + result["output"]}
+
 # --- Graph Construction ---
 workflow = StateGraph(EDAState)
 workflow.add_node("EDA", RunnableLambda(run_eda))
+workflow.add_node("FE", RunnableLambda(run_fe))
+workflow.add_node("Model", RunnableLambda(run_modeling))
+
 workflow.set_entry_point("EDA")
-workflow.set_finish_point("EDA")
+workflow.add_edge("EDA", "FE")
+workflow.add_edge("FE", "Model")
+workflow.set_finish_point("Model")
+
 eda_app = workflow.compile()
 
 # --- Run pipeline ---
@@ -95,7 +125,7 @@ if __name__ == "__main__":
             print(f"❌ Required input missing: {file}")
             exit(1)
 
-    print("\n🚀 Starting LangGraph EDA pipeline...")
+    print("\n🚀 Starting LangGraph EDA → FE → Modeling pipeline...")
     final_state = eda_app.invoke({"status": "start", "summary": ""})
 
     print("\n✅ Final Summary:\n")
