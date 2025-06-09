@@ -1,0 +1,58 @@
+{
+  "dataset_shape": [rows, columns],
+  "column_types": {
+    "numeric": ["col1", "col2"],
+    "categorical": ["cat1", "cat2"],
+    "datetime": ["date"]
+  },
+  "missing_values": {
+    "col2": 0.23,
+    "cat1": 0.12
+  },
+  "skewed_columns": ["col1", "col3"],
+  "outliers_detected": ["col3", "col4"],
+  "highly_correlated_pairs": [["col5", "col6", 0.94]],
+  "constant_columns": ["col7"],
+  "eda_recommendations": {
+    "drop_columns": ["col7"],
+    "transform": {
+      "col1": "log",
+      "col3": "cap_outliers"
+    },
+    "impute": {
+      "col2": "median",
+      "cat1": "mode"
+    },
+    "datetime_features": ["extract_month", "extract_dayofweek"]
+  }
+}
+
+
+{
+  
+  "final_features": ["col1_log", "col2", "month", "dayofweek", "cat1_encoded"],
+  "transformations_applied": {
+    "col1": "log",
+    "col3": "outlier_capping"
+  },
+  "imputation": {
+    "col2": "median",
+    "cat1": "mode"
+  },
+  "encoding": {
+    "cat1": "onehot"
+  },
+  "datetime_features_created": ["month", "dayofweek"],
+  "dropped_columns": ["col5", "col7"],
+  "feature_selection_notes": {
+    "removed_highly_correlated": ["col5"],
+    "removed_constant": ["col7"]
+  },
+  "X_train": "...",  // dataframe or reference
+  "X_val": "...",
+  "X_test": "...",
+  "y_train": "...",
+  "y_val": "...",
+  "y_test": "..."
+}
+
