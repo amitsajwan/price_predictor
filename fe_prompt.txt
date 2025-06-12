@@ -1,0 +1,39 @@
+You are a machine learning strategist helping with stock price prediction.
+
+I have prepared 6 different feature sets using various feature engineering techniques on stock time-series data (daily data, ~6000 rows). Each feature set has been derived based on different logic or importance cutoff.
+
+Here are the feature sets:
+
+1. **Set A - Top 20 Features**  
+   Based on EDA-ranked importance (e.g., Close, Volume, MA5, RSI)
+
+2. **Set B - Top 30 Features**  
+   Extension of Set A, includes more long-term trend features
+
+3. **Set C - Top 40 Features**  
+   Broadest from EDA-ranked features, includes volatilities and price deltas
+
+4. **Set D - Technical Indicators Set**  
+   Contains only technical indicators like RSI, MACD, Bollinger Bands, EMA, etc.
+
+5. **Set E - Lag-Based Set**  
+   Contains lag features like Close_t-1, Volume_t-1, MA_t-3, etc.
+
+6. **Set F - Mixed Set (Advanced FE)**  
+   Combines EDA, lags, trends, and derived volatility scores
+
+**Goal**: Predict next-day or next-N-day stock closing price.
+
+---
+
+Please do the following:
+
+1. For **each of the 6 feature sets**, suggest the **10 most suitable ML models**.
+2. Specify for each model:
+   - Why it is a good fit for that feature set
+   - Whether it handles multicollinearity, non-linearity, or time-dependency well
+   - If it is prone to overfitting on ~6000 rows
+3. Keep the models diverse (e.g., include linear, tree-based, ensemble, boosting, and optionally light DL if justified).
+4. Optionally suggest specific hyperparameter tips if needed (e.g., regularization for Ridge, n_estimators for RF)
+
+Your response should be structured as a table or section-wise per feature set. Keep the explanations concise but helpful.
