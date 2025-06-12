@@ -1,39 +1,68 @@
-You are a machine learning strategist helping with stock price prediction.
+You are a Python-based feature engineering assistant.
 
-I have prepared 6 different feature sets using various feature engineering techniques on stock time-series data (daily data, ~6000 rows). Each feature set has been derived based on different logic or importance cutoff.
-
-Here are the feature sets:
-
-1. **Set A - Top 20 Features**  
-   Based on EDA-ranked importance (e.g., Close, Volume, MA5, RSI)
-
-2. **Set B - Top 30 Features**  
-   Extension of Set A, includes more long-term trend features
-
-3. **Set C - Top 40 Features**  
-   Broadest from EDA-ranked features, includes volatilities and price deltas
-
-4. **Set D - Technical Indicators Set**  
-   Contains only technical indicators like RSI, MACD, Bollinger Bands, EMA, etc.
-
-5. **Set E - Lag-Based Set**  
-   Contains lag features like Close_t-1, Volume_t-1, MA_t-3, etc.
-
-6. **Set F - Mixed Set (Advanced FE)**  
-   Combines EDA, lags, trends, and derived volatility scores
-
-**Goal**: Predict next-day or next-N-day stock closing price.
+You are given:
+- EDA-cleaned datasets: `train`, `val`, and `test` (as pandas DataFrames)
+- Target column: `'target'`
+- EDA suggestions, including ranked features, technical indicators, and lag ideas
+- You need to create six distinct feature sets (A–F), as described below
 
 ---
 
-Please do the following:
+📌 TASK:
+For each feature set (A–F), perform the following steps:
 
-1. For **each of the 6 feature sets**, suggest the **10 most suitable ML models**.
-2. Specify for each model:
-   - Why it is a good fit for that feature set
-   - Whether it handles multicollinearity, non-linearity, or time-dependency well
-   - If it is prone to overfitting on ~6000 rows
-3. Keep the models diverse (e.g., include linear, tree-based, ensemble, boosting, and optionally light DL if justified).
-4. Optionally suggest specific hyperparameter tips if needed (e.g., regularization for Ridge, n_estimators for RF)
+1. Use the specified columns/features for that set (see definitions below)
+2. Build a **single sklearn `Pipeline`** of all required transformations
+3. Fit the pipeline on `train` only
+4. Apply the same pipeline to `val` and `test`
+5. After transformation, split each dataset into `X_*` (features) and `y_*` (target)
+6. Save the pipeline as: `fe_pipeline_setA.joblib`, ..., `fe_pipeline_setF.joblib`
+7. Do **not** print explanations — only return Python code with all transformations and outputs
 
-Your response should be structured as a table or section-wise per feature set. Keep the explanations concise but helpful.
+---
+
+🎯 Target column: `'target'`
+
+---
+
+📦 Feature Set Definitions:
+
+**Set A – Top 20 EDA Features**  
+Use top-ranked features from EDA:  
+`['Close', 'Volume', 'MA5', 'RSI', 'Open', 'High', 'Low', 'EMA10', 'SMA5', 'ATR', 'VWAP', 'OBV', 'CCI', 'ADX', 'ROC', 'Momentum', 'Stochastic_K', 'Stochastic_D', 'MACD', 'Signal']`
+
+**Set B – Top 30 Features**  
+Use Set A + 10 more trend-related features:  
+`['MA10', 'MA20', 'EMA20', 'EMA50', 'SMA10', 'SMA20', 'Price_Diff', 'Daily_Return', 'Close/Open', 'Volatility']`
+
+**Set C – Top 40 Features (Broader)**  
+Use Set B + volatility and derived price changes:  
+`['Price_Delta', 'Rolling_STD', 'ATR_diff', 'RSI_change']`
+
+**Set D – Technical Indicators Only**  
+Use only technical indicators:  
+`['RSI', 'MACD', 'MACD_signal', 'Bollinger_upper', 'Bollinger_lower', 'EMA20', 'EMA50', 'SMA10']`
+
+**Set E – Lag-Based Features**  
+Use lag features like:  
+`['Close_lag1', 'Close_lag3', 'Volume_lag1', 'Volume_lag5', 'MA5_lag2', 'RSI_lag2']`
+
+**Set F – Mixed Features (Advanced)**  
+Combine Set B, lag features, and technical indicators:  
+(all features from Set B + Set D + Set E, deduplicated)
+
+---
+
+⚙️ Requirements:
+- Use consistent transformation pipelines: standardize numerics, encode categoricals if any
+- Use sklearn's `Pipeline`, `ColumnTransformer`, or custom transformers where necessary
+- Ensure no data leakage: fit all transformations using only `train`
+- Maintain feature order and schema across splits
+
+---
+
+📤 Output:
+- Save each fitted pipeline as: `fe_pipeline_setA.joblib`, ..., `fe_pipeline_setF.joblib`
+- Output variables:  
+  `X_train_setA`, `y_train_setA`, ..., `X_test_setF`, `y_test_setF`
+- Return **only** the Python code that performs the above
