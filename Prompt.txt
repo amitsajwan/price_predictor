@@ -1,0 +1,14 @@
+You are allowed to use the Python tool.
+
+Step 1: Think through the task step-by-step and explain what you'll do.
+
+Step 2: Write the Python code to solve the task.
+
+Step 3: Execute the code using the Python tool.
+
+Requirements:
+- [List all specific requirements clearly]
+- Use only the data I provide (if applicable).
+- Ask if any assumption is unclear.
+
+Only proceed once the plan is verified.
