@@ -1,14 +1,50 @@
-You are allowed to use the Python tool.
+eda_prompt = """
+Perform a comprehensive Exploratory Data Analysis (EDA) on the given dataset.
 
-Step 1: Think through the task step-by-step and explain what you'll do.
+### Input:
+- A tabular dataset with structured columns (like a DataFrame).
+- Each column may be numeric, categorical, or datetime.
+- The dataset may include a target column, which should be automatically detected or inferred if not specified.
 
-Step 2: Write the Python code to solve the task.
+### Objectives:
+Generate:
+1. An **EDA Report**: Detailed insights and observations sectioned clearly.
+2. An **EDA Summary**: Concise, high-level summary of findings.
+3. **Feature Engineering Suggestions**: List possible transformations, encodings, or new features that can improve modeling.
+4. **Modeling Recommendations**: Based on EDA findings, suggest appropriate model types (e.g., regression/classification), feature selection strategies, or preprocessing steps.
 
-Step 3: Execute the code using the Python tool.
+### EDA Report must include:
+- Shape of the dataset (rows, columns)
+- Data types of each column
+- Missing values (count and %)
+- Duplicate rows (count)
+- Univariate analysis (distribution of each feature)
+- Bivariate analysis (relationships with target, if present)
+- Correlation matrix (numerical features)
+- Outlier detection (IQR or z-score)
+- Basic statistics (mean, std, min, max, median)
+- Any unusual patterns or anomalies
 
-Requirements:
-- [List all specific requirements clearly]
-- Use only the data I provide (if applicable).
-- Ask if any assumption is unclear.
+### EDA Summary must include:
+- High-level patterns or concerns
+- Key variables of interest
+- Insights about data quality
 
-Only proceed once the plan is verified.
+### Feature Engineering Suggestions:
+- Identify columns suitable for encoding (e.g., one-hot, label)
+- Identify columns suitable for binning (e.g., age groups)
+- Suggest new features (e.g., ratios, interaction terms)
+- Flag redundant or low-variance features
+
+### Modeling Suggestions:
+- Classification or regression?
+- Feature selection tips
+- Recommended preprocessing (scaling, encoding, imputation)
+- Potential target leakage risks
+
+### Output:
+Return everything in structured plain text or JSON. Visualizations are not required. Do not return code unless requested.
+
+### Example Use Case:
+The dataset contains: customer_id, age, gender, income, region, product_category, purchase_amount (target).
+"""
