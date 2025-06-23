@@ -1,0 +1,123 @@
+# Modeling Agent Prompt
+
+## Objective:
+
+Train and evaluate regression models using the **provided feature sets and configurations**.
+The goal is to predict the next day's log return (`Target_return`) with the best possible RMSE.
+
+---
+
+## Input:
+
+### Modeling Configurations
+
+Each configuration is a JSON object with keys:
+
+* `name`: Name of the feature set/model configuration
+* `description`: Optional explanation
+* `train_ref`: Path to engineered train X
+* `train_y_ref`: Path to corresponding train y
+* `val_ref`: Path to engineered val X
+* `val_y_ref`: Path to corresponding val y
+* `test_ref`: Path to engineered test X
+* `test_y_ref`: Path to corresponding test y
+* `model_name`: Model type (e.g., `RandomForestRegressor`)
+* `parameters`: Hyperparameters
+
+> Input file: `FeatureEngineering_List.json` containing the list of configurations.
+> Target column is `Target_return`
+
+---
+
+## Instructions:
+
+### Step 1: Iterate Over Modeling Configurations
+
+Loop over each modeling configuration in `FeatureEngineering_List.json`:
+
+* Parse all references and metadata.
+
+### Step 2: Load Data Files
+
+* Load the following files:
+
+  * `train_ref`, `train_y_ref`
+  * `val_ref`, `val_y_ref`
+  * `test_ref`, `test_y_ref`
+* Validate:
+
+  * No missing values in features (unless allowed)
+  * Shape alignment between X and y files
+
+### Step 3: Train the Model with Hyperparameter Tuning
+
+* Use `train_ref` and `train_y_ref` for fitting
+* Perform tuning using validation set (GridSearchCV or RandomizedSearchCV)
+
+### Step 4: Validate the Model
+
+* Predict on `val_ref`
+* Evaluate RMSE using `val_y_ref`
+
+### Step 5: Evaluate on Test Data
+
+* Predict on `test_ref`
+* Evaluate final RMSE using `test_y_ref`
+
+### Step 6: Save Model and Files
+
+* Save trained model using `joblib` as `model_ref`
+* Save evaluation predictions and test files (if needed)
+
+### Step 7: Update Output Configuration
+
+Return each config with results:
+
+* `model_ref`
+* `train_rmse`, `val_rmse`, `test_rmse`
+* All file references used
+
+---
+
+## Retry Logic:
+
+* Allow up to 6 retries for each configuration
+* On persistent failure, log and skip
+
+---
+
+## Final Output:
+
+Return only a valid JSON list:
+
+```json
+[
+  {
+    "name": "High Correlation Features with RandomForest",
+    "description": "Using high correlation features with RandomForest",
+    "model_ref": "rf_high_corr_model.pkl",
+    "train_rmse": 0.0123,
+    "val_rmse": 0.0131,
+    "test_rmse": 0.0148,
+    "train_ref": "high_corr_train.csv",
+    "train_y_ref": "high_corr_train_y.csv",
+    "val_ref": "high_corr_val.csv",
+    "val_y_ref": "high_corr_val_y.csv",
+    "test_ref": "high_corr_test.csv",
+    "test_y_ref": "high_corr_test_y.csv"
+  }
+]
+```
+
+> ✅ Ensure JSON is valid using `json.loads()`
+> ❌ No logs, print statements, or unstructured output
+
+---
+
+## Notes:
+
+* Use `Target_return` as the prediction column
+* Inputs are already engineered — do not apply transformations
+* Match `X` and `y` file references
+* Ensure shape consistency
+* Ensure reproducibility using defined `random_state`
