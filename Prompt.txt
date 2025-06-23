@@ -1,50 +1,50 @@
-eda_prompt = """
-Perform a comprehensive Exploratory Data Analysis (EDA) on the given dataset.
+### Task:
+Perform Exploratory Data Analysis (EDA) on the given dataset.
 
-### Input:
-- A tabular dataset with structured columns (like a DataFrame).
-- Each column may be numeric, categorical, or datetime.
-- The dataset may include a target column, which should be automatically detected or inferred if not specified.
+### Objective:
+Analyze the dataset to understand its structure, quality, and patterns. Provide insights that can guide downstream tasks like feature engineering and modeling.
 
-### Objectives:
-Generate:
-1. An **EDA Report**: Detailed insights and observations sectioned clearly.
-2. An **EDA Summary**: Concise, high-level summary of findings.
-3. **Feature Engineering Suggestions**: List possible transformations, encodings, or new features that can improve modeling.
-4. **Modeling Recommendations**: Based on EDA findings, suggest appropriate model types (e.g., regression/classification), feature selection strategies, or preprocessing steps.
+### Inputs:
+- A structured dataset (e.g., a DataFrame with rows and columns)
+- Columns may include numerical, categorical, or datetime values
+- (Optional) Target column (can be inferred if not specified)
 
-### EDA Report must include:
-- Shape of the dataset (rows, columns)
-- Data types of each column
-- Missing values (count and %)
-- Duplicate rows (count)
-- Univariate analysis (distribution of each feature)
-- Bivariate analysis (relationships with target, if present)
-- Correlation matrix (numerical features)
-- Outlier detection (IQR or z-score)
-- Basic statistics (mean, std, min, max, median)
-- Any unusual patterns or anomalies
+### Steps to Perform:
+1. **Shape and Schema**:
+   - Number of rows and columns
+   - Data types of all columns
 
-### EDA Summary must include:
-- High-level patterns or concerns
-- Key variables of interest
-- Insights about data quality
+2. **Missing & Duplicate Values**:
+   - Count and percentage of missing values per column
+   - Number of duplicate rows
 
-### Feature Engineering Suggestions:
-- Identify columns suitable for encoding (e.g., one-hot, label)
-- Identify columns suitable for binning (e.g., age groups)
-- Suggest new features (e.g., ratios, interaction terms)
-- Flag redundant or low-variance features
+3. **Univariate Analysis**:
+   - For numeric columns: mean, median, std, min, max
+   - For categorical columns: top categories and counts
 
-### Modeling Suggestions:
-- Classification or regression?
-- Feature selection tips
-- Recommended preprocessing (scaling, encoding, imputation)
-- Potential target leakage risks
+4. **Bivariate Analysis**:
+   - Correlation between features and target (if available)
+   - Group-wise trends (e.g., target by category)
 
-### Output:
-Return everything in structured plain text or JSON. Visualizations are not required. Do not return code unless requested.
+5. **Outlier Detection**:
+   - Use IQR or Z-score to find outliers in numerical columns
 
-### Example Use Case:
-The dataset contains: customer_id, age, gender, income, region, product_category, purchase_amount (target).
-"""
+6. **Feature Relationship Analysis**:
+   - Correlation matrix
+   - Multicollinearity or redundant features
+
+7. **Feature Engineering Suggestions**:
+   - Possible encodings, binning, interaction features
+   - Lag, rolling, or derived features (esp. for time series)
+
+8. **Modeling Recommendations**:
+   - Type of model (classification/regression)
+   - Preprocessing needs (e.g., scaling, encoding)
+   - Any apparent data quality or leakage risks
+
+### Output Requirements:
+- Return a detailed **EDA Report** organized into sections
+- Provide a brief **EDA Summary** with key insights
+- Include **Feature Engineering Suggestions**
+- Include **Modeling Recommendations**
+- Do not return raw data or code unless asked
