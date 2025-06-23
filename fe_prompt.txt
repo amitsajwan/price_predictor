@@ -1,68 +1,150 @@
-You are a Python-based feature engineering assistant.
+# Feature Engineering and Model Selection Agent Prompt
 
-You are given:
-- EDA-cleaned datasets: `train`, `val`, and `test` (as pandas DataFrames)
-- Target column: `'target'`
-- EDA suggestions, including ranked features, technical indicators, and lag ideas
-- You need to create six distinct feature sets (A–F), as described below
+## Objective:
 
----
-
-📌 TASK:
-For each feature set (A–F), perform the following steps:
-
-1. Use the specified columns/features for that set (see definitions below)
-2. Build a **single sklearn `Pipeline`** of all required transformations
-3. Fit the pipeline on `train` only
-4. Apply the same pipeline to `val` and `test`
-5. After transformation, split each dataset into `X_*` (features) and `y_*` (target)
-6. Save the pipeline as: `fe_pipeline_setA.joblib`, ..., `fe_pipeline_setF.joblib`
-7. Do **not** print explanations — only return Python code with all transformations and outputs
+Engineer feature sets from the datasets based on **EDA insights**.
+Select suitable machine learning models for each feature set and prepare model configurations.
+This will be used in modeling to predict the **next day's log return**.
 
 ---
 
-🎯 Target column: `'target'`
+## Context:
+
+**EDA Report:** Use insights from the EDA summary and report to inform feature engineering and model selection.
+
+### Full EDA Report:
+
+**EDA Summary:**
+{eda\_summary}
+
+```
+{eda_report_text}
+```
 
 ---
 
-📦 Feature Set Definitions:
+## Data Files:
 
-**Set A – Top 20 EDA Features**  
-Use top-ranked features from EDA:  
-`['Close', 'Volume', 'MA5', 'RSI', 'Open', 'High', 'Low', 'EMA10', 'SMA5', 'ATR', 'VWAP', 'OBV', 'CCI', 'ADX', 'ROC', 'Momentum', 'Stochastic_K', 'Stochastic_D', 'MACD', 'Signal']`
+**Format:** JSON
 
-**Set B – Top 30 Features**  
-Use Set A + 10 more trend-related features:  
-`['MA10', 'MA20', 'EMA20', 'EMA50', 'SMA10', 'SMA20', 'Price_Diff', 'Daily_Return', 'Close/Open', 'Volatility']`
+```json
+ data_files_ref = {initial_data} 
+```
 
-**Set C – Top 40 Features (Broader)**  
-Use Set B + volatility and derived price changes:  
-`['Price_Delta', 'Rolling_STD', 'ATR_diff', 'RSI_change']`
+> These must include split files:
+>
+> * `train_x.csv`, `train_y.csv`
+> * `val_x.csv`, `val_y.csv`
+> * `test_x.csv`, `test_y.csv`
 
-**Set D – Technical Indicators Only**  
-Use only technical indicators:  
-`['RSI', 'MACD', 'MACD_signal', 'Bollinger_upper', 'Bollinger_lower', 'EMA20', 'EMA50', 'SMA10']`
-
-**Set E – Lag-Based Features**  
-Use lag features like:  
-`['Close_lag1', 'Close_lag3', 'Volume_lag1', 'Volume_lag5', 'MA5_lag2', 'RSI_lag2']`
-
-**Set F – Mixed Features (Advanced)**  
-Combine Set B, lag features, and technical indicators:  
-(all features from Set B + Set D + Set E, deduplicated)
+> ⚠️ **Data must be split before feature engineering.** No splitting should be done in this step.
 
 ---
 
-⚙️ Requirements:
-- Use consistent transformation pipelines: standardize numerics, encode categoricals if any
-- Use sklearn's `Pipeline`, `ColumnTransformer`, or custom transformers where necessary
-- Ensure no data leakage: fit all transformations using only `train`
-- Maintain feature order and schema across splits
+## Instructions:
+
+### Step 1: Analyze EDA Report and Identify Features
+
+* Review EDA findings to identify key variables, insights, and recommended transformations.
+* Select top features for engineering based on the summary.
+* Plan appropriate transformations and feature combinations.
 
 ---
 
-📤 Output:
-- Save each fitted pipeline as: `fe_pipeline_setA.joblib`, ..., `fe_pipeline_setF.joblib`
-- Output variables:  
-  `X_train_setA`, `y_train_setA`, ..., `X_test_setF`, `y_test_setF`
-- Return **only** the Python code that performs the above
+### Step 2: Data Preparation
+
+* Load the initial files: `train_x`, `val_x`, `test_x`
+* Convert the `Date` column to datetime format and set as index (if applicable).
+
+---
+
+### Step 3: Develop Feature Sets
+
+* Create \~10 distinct feature sets based on strategies identified in the EDA.
+* Include combinations of raw, lag, rolling, interaction, technical, and categorical features.
+
+---
+
+### Step 4: Perform Feature Engineering
+
+* Implement feature engineering **on `train_x` only** (for fitting).
+* Apply fitted transformers (e.g., scalers, encoders) **to `val_x` and `test_x`** without re-fitting.
+* If using lag features or time-based windows, use **t-1** and earlier data only.
+* Ensure no target leakage during feature creation.
+
+---
+
+### Step 5: Save Feature Set Files
+
+For each feature set, save the processed versions:
+
+* `feature_set_name_train.csv`
+* `feature_set_name_val.csv`
+* `feature_set_name_test.csv`
+
+Each should include only selected features (not target).
+
+---
+
+### Step 5.1: For Each Feature Set
+
+* Subset columns based on selected features only.
+* Handle missing values, remove outliers (if required).
+* Save cleaned files separately.
+
+---
+
+### Step 6: Select Suitable Models
+
+* Choose models best suited for each feature set (based on EDA & feature characteristics).
+* Define model type and parameter configuration per feature set.
+
+---
+
+### Step 7: Prepare Modeling Run Configurations
+
+Return a JSON list of modeling configurations for each (feature set, model) combination.
+Each config should include:
+
+* Feature set file references (train/val/test)
+* Model type
+* Model parameters
+* Justification (optional but helpful)
+
+---
+
+## Final Output:
+
+Return only a valid JSON object:
+
+```json
+{
+  "modeling-run-configs": [
+    {
+      "name": "high_corr_rf",
+      "description": "Using high correlation features with RandomForest",
+      "train_ref": "high_corr_train.csv",
+      "val_ref": "high_corr_val.csv",
+      "test_ref": "high_corr_test.csv",
+      "model": "RandomForest",
+      "parameters": {
+        "n_estimators": 100,
+        "max_depth": 10,
+        "random_state": 42
+      }
+    }
+  ]
+}
+```
+
+> ✅ Ensure JSON is valid using `json.loads`
+> ❌ Do not include commentary, extra text, or models without valid features
+
+---
+
+## Notes:
+
+* Fit transformers only on `train_x`, apply to `val_x` and `test_x`
+* Prevent data leakage by not using `y` during feature creation
+* File names must be consistent
+* Ensure repeatable and clean outputs
