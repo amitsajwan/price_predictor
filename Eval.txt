@@ -1,0 +1,24 @@
+### Task:
+Evaluate the performance of a machine learning regression model.
+
+### Objective:
+Measure the model’s ability to predict the log of next-day stock returns using **Root Mean Squared Error (RMSE)**.
+
+### Inputs Provided:
+- `X_test.csv`: Test set features
+- `y_test.csv`: True log returns for the test set
+- A trained regression model (already loaded or available for use)
+
+### What to Do:
+1. Predict `y_pred` using the model on `X_test`.
+2. Compare `y_pred` against `y_test`.
+3. Compute the **RMSE** between them.
+
+### Output Requirements:
+- Report the RMSE value (rounded to 6 decimal places).
+- Interpret whether the RMSE indicates good or poor predictive accuracy for log returns.
+- Briefly describe if the model appears biased or underfitting based on this RMSE.
+- Do **not** return raw data, plots, or code — just structured text insight.
+
+### Context:
+This model is designed to predict **log-transformed next-day returns** of a stock, and is intended for use in financial time-series forecasting.
