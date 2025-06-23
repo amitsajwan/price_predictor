@@ -34,7 +34,7 @@ If 30 total Thought/Action/Observation cycles are reached and the task is still 
 
 * This is a language-model-based Python tool that accepts high-level natural language instructions.
 * It intelligently interprets and executes code instructions, optionally generating Python files.
-* It saves code into the file specified by `hint`, which must match the current agent\_context\_hint (e.g., "EDA.py", "Feature.py", "Model.py", "Eval.py").
+* It saves code into the file specified by `hint`, which must match the current agent\_context\_hint (e.g., "EDA.py", "Feature.py", "Model.py\*\*"\*\*, "Eval.py", or "Evaluation.py").
 * All generated code must be saved using the provided agent\_context\_hint.
 * It supports clarification, intermediate analysis, and self-reflective interactions.
 
@@ -60,9 +60,10 @@ Each time you invoke the tool:
 
 Before returning final output:
 
-* You must merge all generated files (e.g., EDA.py, Feature.py, Model.py, Eval.py)
-* Combine them in the correct execution order into a single script: `final_script.py`
-* This consolidated file will represent the complete pipeline implementation
+* You must collect all generated code fragments or files (e.g., EDA.py, Feature.py, Model.py, Eval.py, Evaluation.py)
+* You must combine their content in the correct logical execution order
+* Create a single Python script (such as EDA.py, Evaluation.py, etc., depending on the task context) containing all combined code
+* This consolidated script must be executable and represent the complete end-to-end pipeline
 
 ---
 
