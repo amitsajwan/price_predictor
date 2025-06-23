@@ -39,7 +39,9 @@ This will be used in modeling to predict the **next day's log return**.
 >
 > Target column is `Target_return`.
 
-> ⚠️ **Splitting into train/val/test should be done during EDA.** Feature Engineering Agent should not perform splitting.
+> ⚠️ **EDA is responsible for splitting the raw dataset into train/val/test.**
+> ⚠️ **EDA should also handle initial preprocessing like missing value imputation, outlier removal, and filtering.**
+> Feature Engineering Agent assumes clean and split data.
 
 ---
 
@@ -57,12 +59,8 @@ This will be used in modeling to predict the **next day's log return**.
 
 * Load the split files: `train.csv`, `val.csv`, `test.csv`
 * Convert the `Date` column to datetime format and set as index (if applicable)
-* Perform all preprocessing (e.g., NA handling, outlier removal, feature generation) on full DataFrame
-* **Only after all transformations**, split each into:
-
-  * `X` = features (drop `Target_return`)
-  * `y` = target (`Target_return`)
-* This ensures `X` and `y` remain aligned after row drops or filtering
+* **Do not split again** — EDA has already performed this
+* Perform feature engineering transformations only (e.g., encoding, scaling, new features)
 
 ---
 
@@ -101,14 +99,10 @@ For each feature set, save the processed files:
 
 Each `*_y.csv` should contain only the `Target_return` column
 
----
+✅ After saving, verify each file:
 
-### Step 5.1: For Each Feature Set
-
-* Subset columns based on selected features only
-* Handle missing values, remove outliers (if required)
-* Ensure alignment between feature rows and target rows
-* Save cleaned files separately
+* Check that each file exists and is not empty
+* If any file is missing or has zero rows/columns, skip adding that config
 
 ---
 
@@ -167,7 +161,7 @@ Return only a valid JSON object:
 ## Notes:
 
 * Fit transformers only on `train`, apply to `val` and `test`
-* Always split into `X` and `y` after preprocessing to ensure alignment
+* Do not perform splitting or raw preprocessing here — assume EDA handled it
 * If engineered features contain NaNs, handle them consistently using train-only strategy
 * File names must be consistent and clean
 * Ensure repeatable and aligned outputs
