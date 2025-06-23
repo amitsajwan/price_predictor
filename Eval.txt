@@ -1,24 +1,31 @@
 ### Task:
-Evaluate the performance of a machine learning regression model.
+Evaluate a trained machine learning model on a test set.
 
 ### Objective:
-Measure the model’s ability to predict the log of next-day stock returns using **Root Mean Squared Error (RMSE)**.
+Use appropriate regression metrics to evaluate a model trained to predict the **log of next-day stock returns**.
 
-### Inputs Provided:
+### Inputs:
 - `X_test.csv`: Test set features
-- `y_test.csv`: True log returns for the test set
-- A trained regression model (already loaded or available for use)
+- `y_test.csv`: True log returns
+- A trained regression model (already available)
+- The task type is regression
 
-### What to Do:
-1. Predict `y_pred` using the model on `X_test`.
-2. Compare `y_pred` against `y_test`.
-3. Compute the **RMSE** between them.
+### Steps to Perform:
+1. Predict values (`y_pred`) using the model on `X_test`.
+2. Compare predictions with the true values (`y_test`).
+3. Compute the following metric:
+   - **Root Mean Squared Error (RMSE)**
+
+4. Optionally:
+   - Back-transform log returns if needed
+   - Comment on error distribution or bias
 
 ### Output Requirements:
-- Report the RMSE value (rounded to 6 decimal places).
-- Interpret whether the RMSE indicates good or poor predictive accuracy for log returns.
-- Briefly describe if the model appears biased or underfitting based on this RMSE.
-- Do **not** return raw data, plots, or code — just structured text insight.
+- Report the RMSE value (rounded to 6 decimal places)
+- Interpret whether the RMSE is good or bad in the context of return prediction
+- Mention if predictions are biased (e.g., consistently underpredicting/overpredicting)
+- Do not include raw data, plots, or code unless asked
+- Return a concise **Evaluation Summary** followed by a short **Improvement Suggestion** if RMSE is high
 
 ### Context:
-This model is designed to predict **log-transformed next-day returns** of a stock, and is intended for use in financial time-series forecasting.
+The model predicts **log-transformed next-day returns** for a stock and is intended for time-series financial prediction.
