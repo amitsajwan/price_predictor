@@ -1,133 +1,167 @@
-# Exploratory Data Analysis (EDA) Agent Prompt
+# Feature Engineering and Model Selection Agent Prompt
 
-## Objective
+## Objective:
 
-Analyze the dataset to understand structure, quality, and patterns. Provide insights to guide downstream tasks like feature engineering and modeling.
+Engineer feature sets from the datasets based on **EDA insights**.
+Select suitable machine learning models for each feature set and prepare model configurations.
+This will be used in modeling to predict the **next day's log return**.
 
-You are helping build a model to predict **next day's log return**. Define:
+---
 
-```python
-# Log return:
-df["Target_return"] = np.log(df["Close"]).shift(-1) - np.log(df["Close"])
+## Context:
+
+**EDA Report:** Use insights from the EDA summary and report to inform feature engineering and model selection.
+
+### Full EDA Report:
+
+**EDA Summary:**
+{eda\_summary}
+
+```
+{eda_report_text}
 ```
 
 ---
 
-## Input
+## Data Files:
+
+**Format:** JSON
 
 ```json
-{initial_data}
+ data_files_ref = {initial_data} 
 ```
 
-> These must include a reference to the initial raw data CSV file.
+> These must include combined split files (X + y in one DataFrame):
+>
+> * `train.csv`
+> * `val.csv`
+> * `test.csv`
+>
+> Target column is `Target_return`.
 
-**Hint to PythonTool:** Name the created Python file as `EDA.py`. Pass context as `{initial_data}`.
-
----
-
-## Data Preparation
-
-* Load the raw dataset.
-
-* Convert `Date` column to datetime format and set it as index (if present).
-
-* Perform necessary preprocessing:
-
-  * Handle missing values (e.g., imputation, dropping)
-  * Handle outliers (IQR or z-score)
-  * Encode categorical columns (label/one-hot)
-  * Drop constant or duplicate columns
-
-* Split the dataset into **train**, **val**, and **test** sets chronologically.
-
-* Save cleaned, combined (X + y) versions as:
-
-  * `eda_cleaned_train_ref.csv`
-  * `eda_cleaned_val_ref.csv`
-  * `eda_cleaned_test_ref.csv`
+> ⚠️ **EDA is responsible for splitting the raw dataset into train/val/test.**
+> ⚠️ **EDA should also handle initial preprocessing like missing value imputation, outlier removal, and filtering.**
+> Feature Engineering Agent assumes clean and split data.
 
 ---
 
-## EDA Instructions
+## Instructions:
 
-Perform all steps listed below. **Avoid charts or plots. Return in structured plain text.**
+### Step 1: Analyze EDA Report and Identify Features
 
-### Structure of the EDA Report
-
-**1. Introduction**
-
-* Brief introduction to the dataset and EDA objective
-
-**2. Data Overview**
-
-* Number of rows and columns
-* Data types of all columns
-* Unique values per categorical column
-* Constant columns (if any)
-
-**3. Missing & Duplicate Values**
-
-* Count and % of missing values per column
-* Number of duplicate rows
-
-**4. Univariate Analysis**
-
-* For numeric columns: mean, median, std, min, max
-* For categoricals: top categories and counts
-
-**5. Bivariate Analysis**
-
-* Correlation of features with `Target_return`
-* Group-wise trends (e.g., by category or time)
-
-**6. Outlier Detection**
-
-* Use IQR or z-score to list features with extreme values
-
-**7. Feature Relationship Analysis**
-
-* Correlation matrix
-* Multicollinearity detection
-
-**8. Feature Engineering Suggestions**
-
-* Log, lag, rolling, ratio, interaction features
-* Scaling, encoding recommendations
-* Use of external packages like `ta`, `pandas-ta`, etc.
-
-**9. Modeling Recommendations**
-
-* Classification vs Regression
-* Preprocessing requirements
-* Any potential data leakage concerns
+* Review EDA findings to identify key variables, insights, and recommended transformations.
+* Select top features for engineering based on the summary.
+* Plan appropriate transformations and feature combinations.
 
 ---
 
-## Final Output
+### Step 2: Data Preparation
 
-Return a JSON object with the following keys:
+* Load the split files: `train.csv`, `val.csv`, `test.csv`
+* Convert the `Date` column to datetime format and set as index (if applicable)
+* **Do not split again** — EDA has already performed this
+* Perform feature engineering transformations only (e.g., encoding, scaling, new features)
+
+---
+
+### Step 3: Develop Feature Sets
+
+* Create \~10 distinct feature sets based on strategies identified in the EDA.
+* Include combinations of raw, lag, rolling, interaction, technical, and categorical features.
+
+---
+
+### Step 4: Perform Feature Engineering
+
+* Implement feature engineering **on `train` only** (for fitting transformers)
+* Apply fitted transformers (e.g., scalers, encoders) **to `val` and `test`** without re-fitting
+* If using lag features or time-based windows, use **t-1** and earlier data only
+* Ensure no target leakage during feature creation
+* After feature creation, check for NaNs:
+
+  * Drop rows (only if small in number)
+  * Or fill using median/mean/constant (based on `train` only)
+  * Or use forward/backward fill if time series
+  * Apply same strategy to `val` and `test`
+
+---
+
+### Step 5: Save Feature Set Files
+
+For each feature set, save the processed files:
+
+* `feature_set_name_train.csv` → features (X)
+* `feature_set_name_train_y.csv` → target (y)
+* `feature_set_name_val.csv` → features (X)
+* `feature_set_name_val_y.csv` → target (y)
+* `feature_set_name_test.csv` → features (X)
+* `feature_set_name_test_y.csv` → target (y)
+
+Each `*_y.csv` should contain only the `Target_return` column
+
+✅ After saving, verify each file:
+
+* Check that each file exists and is not empty
+* If any file is missing or has zero rows/columns, skip adding that config
+
+---
+
+### Step 6: Select Suitable Models
+
+* Choose models best suited for each feature set (based on EDA & feature characteristics)
+* Define model type and parameter configuration per feature set
+
+---
+
+### Step 7: Prepare Modeling Run Configurations
+
+Return a JSON list of modeling configurations for each (feature set, model) combination
+Each config should include:
+
+* Feature set file references (train/val/test) for `X`
+* Corresponding file references for `y`
+* Model type
+* Model parameters
+* Justification (optional but helpful)
+
+---
+
+## Final Output:
+
+Return only a valid JSON object:
 
 ```json
 {
-  "eda_summary": "High correlation between lag_1 and Target_return. 3 features have >20% missing. No major data leakage detected.",
-  "eda_report_ref": "eda_report_2025_06_24.txt",
-  "eda_cleaned_train_ref": "eda_cleaned_train_ref.csv",
-  "eda_cleaned_val_ref": "eda_cleaned_val_ref.csv",
-  "eda_cleaned_test_ref": "eda_cleaned_test_ref.csv",
-  "target_col": "Target_return",
-  "problem_type": "regression"
+  "modeling-run-configs": [
+    {
+      "name": "high_corr_rf",
+      "description": "Using high correlation features with RandomForest",
+      "train_ref": "high_corr_train.csv",
+      "train_y_ref": "high_corr_train_y.csv",
+      "val_ref": "high_corr_val.csv",
+      "val_y_ref": "high_corr_val_y.csv",
+      "test_ref": "high_corr_test.csv",
+      "test_y_ref": "high_corr_test_y.csv",
+      "model": "RandomForest",
+      "parameters": {
+        "n_estimators": 100,
+        "max_depth": 10,
+        "random_state": 42
+      }
+    }
+  ]
 }
 ```
 
----
-
-## Notes
-
-* `eda_report_ref` must be a self-contained `.txt` file with proper structure, headers, and formatting.
-* Do not return a Python file.
-* `eda_summary` should be brief — 2-5 lines max.
-* All outputs must be verifiable. Ensure the files actually exist.
-* You may use tools like `pandas-profiling`, `sweetviz`, or manual code.
-* Charts, plots, and images are NOT allowed — return plain text only.
+> ✅ Ensure JSON is valid using `json.loads`
+> ❌ Do not include commentary, extra text, or models without valid features
 
 ---
+
+## Notes:
+
+* Fit transformers only on `train`, apply to `val` and `test`
+* Do not perform splitting or raw preprocessing here — assume EDA handled it
+* If engineered features contain NaNs, handle them consistently using train-only strategy
+* File names must be consistent and clean
+* Ensure repeatable and aligned outputs
