@@ -1,50 +1,133 @@
-### Task:
-Perform Exploratory Data Analysis (EDA) on the given dataset.
+# Exploratory Data Analysis (EDA) Agent Prompt
 
-### Objective:
-Analyze the dataset to understand its structure, quality, and patterns. Provide insights that can guide downstream tasks like feature engineering and modeling.
+## Objective
 
-### Inputs:
-- A structured dataset (e.g., a DataFrame with rows and columns)
-- Columns may include numerical, categorical, or datetime values
-- (Optional) Target column (can be inferred if not specified)
+Analyze the dataset to understand structure, quality, and patterns. Provide insights to guide downstream tasks like feature engineering and modeling.
 
-### Steps to Perform:
-1. **Shape and Schema**:
-   - Number of rows and columns
-   - Data types of all columns
+You are helping build a model to predict **next day's log return**. Define:
 
-2. **Missing & Duplicate Values**:
-   - Count and percentage of missing values per column
-   - Number of duplicate rows
+```python
+# Log return:
+df["Target_return"] = np.log(df["Close"]).shift(-1) - np.log(df["Close"])
+```
 
-3. **Univariate Analysis**:
-   - For numeric columns: mean, median, std, min, max
-   - For categorical columns: top categories and counts
+---
 
-4. **Bivariate Analysis**:
-   - Correlation between features and target (if available)
-   - Group-wise trends (e.g., target by category)
+## Input
 
-5. **Outlier Detection**:
-   - Use IQR or Z-score to find outliers in numerical columns
+```json
+{initial_data}
+```
 
-6. **Feature Relationship Analysis**:
-   - Correlation matrix
-   - Multicollinearity or redundant features
+> These must include a reference to the initial raw data CSV file.
 
-7. **Feature Engineering Suggestions**:
-   - Possible encodings, binning, interaction features
-   - Lag, rolling, or derived features (esp. for time series)
+**Hint to PythonTool:** Name the created Python file as `EDA.py`. Pass context as `{initial_data}`.
 
-8. **Modeling Recommendations**:
-   - Type of model (classification/regression)
-   - Preprocessing needs (e.g., scaling, encoding)
-   - Any apparent data quality or leakage risks
+---
 
-### Output Requirements:
-- Return a detailed **EDA Report** organized into sections
-- Provide a brief **EDA Summary** with key insights
-- Include **Feature Engineering Suggestions**
-- Include **Modeling Recommendations**
-- Do not return raw data or code unless asked
+## Data Preparation
+
+* Load the raw dataset.
+
+* Convert `Date` column to datetime format and set it as index (if present).
+
+* Perform necessary preprocessing:
+
+  * Handle missing values (e.g., imputation, dropping)
+  * Handle outliers (IQR or z-score)
+  * Encode categorical columns (label/one-hot)
+  * Drop constant or duplicate columns
+
+* Split the dataset into **train**, **val**, and **test** sets chronologically.
+
+* Save cleaned, combined (X + y) versions as:
+
+  * `eda_cleaned_train_ref.csv`
+  * `eda_cleaned_val_ref.csv`
+  * `eda_cleaned_test_ref.csv`
+
+---
+
+## EDA Instructions
+
+Perform all steps listed below. **Avoid charts or plots. Return in structured plain text.**
+
+### Structure of the EDA Report
+
+**1. Introduction**
+
+* Brief introduction to the dataset and EDA objective
+
+**2. Data Overview**
+
+* Number of rows and columns
+* Data types of all columns
+* Unique values per categorical column
+* Constant columns (if any)
+
+**3. Missing & Duplicate Values**
+
+* Count and % of missing values per column
+* Number of duplicate rows
+
+**4. Univariate Analysis**
+
+* For numeric columns: mean, median, std, min, max
+* For categoricals: top categories and counts
+
+**5. Bivariate Analysis**
+
+* Correlation of features with `Target_return`
+* Group-wise trends (e.g., by category or time)
+
+**6. Outlier Detection**
+
+* Use IQR or z-score to list features with extreme values
+
+**7. Feature Relationship Analysis**
+
+* Correlation matrix
+* Multicollinearity detection
+
+**8. Feature Engineering Suggestions**
+
+* Log, lag, rolling, ratio, interaction features
+* Scaling, encoding recommendations
+* Use of external packages like `ta`, `pandas-ta`, etc.
+
+**9. Modeling Recommendations**
+
+* Classification vs Regression
+* Preprocessing requirements
+* Any potential data leakage concerns
+
+---
+
+## Final Output
+
+Return a JSON object with the following keys:
+
+```json
+{
+  "eda_summary": "High correlation between lag_1 and Target_return. 3 features have >20% missing. No major data leakage detected.",
+  "eda_report_ref": "eda_report_2025_06_24.txt",
+  "eda_cleaned_train_ref": "eda_cleaned_train_ref.csv",
+  "eda_cleaned_val_ref": "eda_cleaned_val_ref.csv",
+  "eda_cleaned_test_ref": "eda_cleaned_test_ref.csv",
+  "target_col": "Target_return",
+  "problem_type": "regression"
+}
+```
+
+---
+
+## Notes
+
+* `eda_report_ref` must be a self-contained `.txt` file with proper structure, headers, and formatting.
+* Do not return a Python file.
+* `eda_summary` should be brief — 2-5 lines max.
+* All outputs must be verifiable. Ensure the files actually exist.
+* You may use tools like `pandas-profiling`, `sweetviz`, or manual code.
+* Charts, plots, and images are NOT allowed — return plain text only.
+
+---
