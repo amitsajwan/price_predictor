@@ -1,132 +1,124 @@
-# Feature Engineering and Model Selection Agent Prompt
+# Feature Engineering Agent Prompt
 
-## Objective:
+## Objective
 
-Engineer a complete feature set from EDA insights and generate multiple derived feature subsets.
-Each subset will be used in modeling to predict the **next day's log return**.
-
----
-
-## Context:
-
-**EDA Report:** Use insights from the EDA summary and report to guide the full feature engineering.
-
-### Full EDA Report:
-
-**EDA Summary:**
-{{eda\_summary}}
-
-```
-{{eda_report_text}}
-```
+Use insights from EDA to generate engineered features for modeling. Apply transformations on cleaned train/val/test splits. Loop through multiple feature set definitions and return modeling-ready references.
 
 ---
 
-## Data Files:
-
-**Format:** JSON
+## Input
 
 ```json
- data_files_ref = {{initial_data}} 
+{{eda_output}}
 ```
 
-> These must include combined split files (X + y in one DataFrame):
->
-> * `train.csv`
-> * `val.csv`
-> * `test.csv`
->
-> Target column is `Target_return`.
+Expected keys:
+
+* `eda_cleaned_train_ref`
+* `eda_cleaned_val_ref`
+* `eda_cleaned_test_ref`
+* `target_col`
+
+The files include both features and target.
 
 ---
 
-## Instructions:
+## Feature Engineering Steps
 
-### Step 1: Load and Prepare Full Data
+1. **Load cleaned train/val/test files** from EDA.
 
-* Load `train.csv`, `val.csv`, and `test.csv`
-* Check if `Date` column exists:
+2. **Separate features and target**
 
-  * If yes, convert using `pd.to_datetime`
-  * If not used for time-based operations, drop or exclude it
+   * Extract `y_train`, `y_val`, `y_test` from target column.
+   * Store `X_train`, `X_val`, `X_test` as all remaining columns.
 
----
+3. **Full Feature Engineering on Train**
 
-### Step 2: Engineer Full Feature Set
+   * Generate new features:
 
-* Perform **complete feature engineering** using all available insights:
+     * Lag features: `lag_1`, `lag_2`, `lag_3`, etc.
+     * Rolling statistics: mean, std, z-score, min, max
+     * Technical indicators: RSI, MACD, ATR, Bollinger Bands, etc. (via `ta` or `pandas-ta`)
+     * Price ratios: `Close/Open`, `High/Low`, etc.
+     * Volatility indicators: rolling std, ATR, Bollinger width
+     * Interaction features: cross terms, price \* volume, etc.
+   * **Fit any transformers (e.g., scalers, encoders) on X\_train only**
+   * Apply transforms to `X_val` and `X_test`
 
-  * Lag, rolling, interaction, ratio, polynomial, encoding, scaling, etc.
-  * You may use libraries such as `scikit-learn`, `category_encoders`, `tsfresh`, `ta`, or any other helpful packages.
-  * Fit all transformers **only on `train`**
-  * Apply them to `val` and `test` using `.transform()` only
-* Resulting files:
+4. **Feature Scaling** (as needed)
 
-  * `full_features_train.csv`
-  * `full_features_val.csv`
-  * `full_features_test.csv`
+   * Use `StandardScaler` or `RobustScaler`
+   * Fit only on `X_train`, apply to `X_val`, `X_test`
 
----
+5. **Store Full Feature Set** (base for all subsets)
 
-### Step 3: Generate Feature Subsets (Loop)
-
-* From the full engineered dataset, define \~10 different feature sets based on EDA:
-
-  * e.g., high correlation features, all technicals, lags only, etc.
-
-Loop over each feature set:
-
-````python
-for feature_set in feature_sets:
-    1. Select relevant columns (X) from full feature files: train, val, test
-    2. Extract corresponding y from original input files → Target_return column
-    3. Save files as:
-       - `feature_set_name_x_train_ref.csv`
-       - `feature_set_name_y_train_ref.csv`
-       - `feature_set_name_x_val_ref.csv`
-       - `feature_set_name_y_val_ref.csv`
-       - `feature_set_name_x_test_ref.csv`
-       - `feature_set_name_y_test_ref.csv`
-    4. Verify each file exists and is not empty
-    5. Append the following dictionary to a config list:
-       ```json
-       {
-         "name": "...",
-         "description": "...",
-         "x_train_ref": "...",
-         "y_train_ref": "...",
-         "x_val_ref": "...",
-         "y_val_ref": "...",
-         "x_test_ref": "...",
-         "y_test_ref": "...",
-         "model": "...",
-         "parameters": {{ ... }}
-       }
-       ```
-````
-
-> ✅ Save files inside each iteration.
-> ✅ Append to config list only after successful file save.
-> ✅ Skip iteration if any file is missing or invalid.
+   * `engineered_X_train`, `engineered_X_val`, `engineered_X_test`
 
 ---
 
-### Step 4: Return Final Configuration JSON
+## Subset Loop (Feature Set Variants)
 
-Return only a valid JSON object with all modeling configs:
+Loop through 10–12 different feature sets:
+
+* All Features
+* Top correlated with target
+* No highly correlated (drop collinear)
+* Lag-only features
+* Rolling-only features
+* TA indicators only
+* Low missing features only
+* High variance features
+* Interaction-only
+* SHAP or importance-based top N (if available)
+
+### For each subset:
+
+1. Select columns from full feature set
+2. Save subset files:
+
+   * `x_train_ref`, `x_val_ref`, `x_test_ref`
+   * `y_train_ref`, `y_val_ref`, `y_test_ref`
+3. Append config:
 
 ```json
 {
-  "modeling-run-configs": [ ... ]
+  "name": "top_corr_features",
+  "x_train_ref": "x_train_top_corr.csv",
+  "x_val_ref": "x_val_top_corr.csv",
+  "x_test_ref": "x_test_top_corr.csv",
+  "y_train_ref": "y_train.csv",
+  "y_val_ref": "y_val.csv",
+  "y_test_ref": "y_test.csv",
+  "model": "RandomForestRegressor",
+  "parameters": {{}}
+}
+```
+
+4. Only append if all referenced files exist.
+
+---
+
+## Final Output
+
+Return a JSON object:
+
+```json
+{
+  "modeling-run-configs": [
+    { subset_config_1 },
+    { subset_config_2 },
+    ...
+  ]
 }
 ```
 
 ---
 
-## Notes:
+## Notes
 
-* This agent builds `full_features_*` once, and derives all subsets from it
-* Transformers must be fit only on `train`, then applied to `val` and `test`
-* File presence check is mandatory before saving any config
-* You may use any Python library that helps with feature engineering (e.g., `ta`, `pandas-ta`, `tsfresh`, `scikit-learn`, etc.)
-* Return valid JSON only, no logs or print statements
+* Use `ta`, `pandas-ta`, `tsfresh`, `sklearn`, `category_encoders`, etc.
+* Do not re-split the data.
+* Always save files inside loop.
+* Ensure clean handling of time-based structure.
+* Avoid leakage from future or target-aligned features.
+* Do not return any plots or notebooks — just plain structured JSON.
