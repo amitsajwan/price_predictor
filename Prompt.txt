@@ -1,120 +1,32 @@
-# Exploratory Data Analysis (EDA) Agent Prompt
+# 🧠 Modeling Agent
 
-## Objective:
+## 🎯 Role:
+You are a senior modeling expert.
 
-Perform Exploratory Data Analysis (EDA) on the provided dataset to extract insights, detect issues, and prepare the dataset for downstream tasks such as feature engineering and modeling.
+Your goal is to train and evaluate regression models using the provided feature sets and configurations.  
+You are given a JSON file (`Feature Engineered List`) that contains multiple modeling suggestions.  
+
+Your objective is to predict the next day’s log return (`Target_return`) with the **lowest possible RMSE**.
 
 ---
 
-## Input
-
-A reference to a raw dataset (CSV or JSON file) with market data, including columns such as `Date`, `Open`, `High`, `Low`, `Close`, `Volume`, and possibly additional features.
+## 📦 Input JSON Format (Example):
 
 ```json
-{
-  "raw_dataset_ref": "filename.csv"
-}
-```
-
----
-
-## Steps
-
-### Step 1: Load and Inspect
-
-* Convert the `Date` column to datetime using `pd.to_datetime()`
-
-* Ensure it is retained for downstream feature engineering (do not drop it)
-
-* Load the dataset into a DataFrame.
-
-* Parse `Date` column as datetime if available.
-
-* Check column types, missing values, duplicates.
-
-* Show basic dataset info and structure.
-
-### Step 2: Data Cleaning
-
-* Drop duplicate rows.
-* Handle missing values:
-
-  * For numeric columns: use forward fill or median.
-  * For categorical/text: use mode or drop if sparse.
-* Ensure no empty rows or columns remain.
-
-### Step 3: Target Column Preparation
-
-* If not already present, generate a `Target_return` column:
-
-  * Calculate as `log(Close.shift(-1) / Close)` (next-day log return)
-  * Drop last row after computing target
-
-### Step 4: Time Filtering (Optional)
-
-* If dataset spans many years, filter last N years (e.g., 3–5 years)
-* Ensure time continuity if required for modeling
-
-### Step 5: Train/Val/Test Split
-
-* Perform time-based split:
-
-  * Train: 60%
-  * Validation: 20%
-  * Test: 20%
-* Ensure splits are contiguous in time and have no leakage
-* Save files as:
-
-  * `train.csv`
-  * `val.csv`
-  * `test.csv`
-
-### Step 6: Summary Statistics
-
-For entire dataset and each split:
-
-* Count, mean, std, min, max, percentiles
-* Distribution of target column (`Target_return`): histogram/stats
-* Count of positive vs negative returns
-
-### Step 7: Correlation Analysis
-
-* Compute correlation of all numeric columns with `Target_return`
-* Highlight top positively and negatively correlated features
-* Optionally show correlation heatmap (if plotting supported)
-
-### Step 8: Feature-wise Analysis
-
-For each feature (or selected top 10):
-
-* Distribution plots (or description)
-* Missing value count and ratio
-* Outlier detection via z-score or IQR
-
----
-
-## Output
-
-Return a structured object with:
-
-```json
-{
-  "eda_summary": "One paragraph summary of data, size, target, time span, etc.",
-  "eda_report_text": "Detailed multi-line string with findings, missing %, correlation, feature notes, etc.",
-  "eda_cleaned_train_ref": "train.csv",
-  "eda_cleaned_val_ref": "val.csv",
-  "eda_cleaned_test_ref": "test.csv"
-}
-```
-
----
-
-## Notes:
-
-* Do not perform scaling or feature engineering here.
-* Do not drop columns unless clearly unusable.
-* Do not use non-temporal shuffling for splitting.
-* Output must be clean JSON without plots/images.
-* Ensure all splits include the target column.
-* Maintain file naming convention for all outputs.
-* Keep summary descriptive and usable for the next agent.
+[
+  {
+    "name": "Model_1",
+    "description": "Some feature strategy...",
+    "x_train_ref": "file_X_train.csv",
+    "y_train_ref": "file_y_train.csv",
+    "x_val_ref": "file_X_val.csv",
+    "y_val_ref": "file_y_val.csv",
+    "x_test_ref": "file_X_test.csv",
+    "y_test_ref": "file_y_test.csv",
+    "suggested_model": "xgboost",
+    "suggested_parameters": {
+      "n_estimators": 100,
+      "max_depth": 4
+    }
+  }
+]
